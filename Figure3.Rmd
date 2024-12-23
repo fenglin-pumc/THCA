@@ -1,0 +1,218 @@
+---
+title: "Figure3"
+author: "SRF"
+date: "2024-12-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+```
+
+
+```{r}
+library(Seurat)
+library(SCP)
+library(RColorBrewer)
+library(tidyverse)
+library(pheatmap)
+library(cowplot)
+library(superheat)
+library(ggpubr)
+theme_set(theme_cowplot())
+```
+
+
+```{r}
+source("./00_ColorSetting.R")
+seur <- readRDS("./RData/seur.rds")
+sce_inf <- readRDS("./RData/01_sce_inf.rds")
+seur@reductions$umap@cell.embeddings <- as.matrix(sce_inf[, c("UMAP1_cl", "UMAP2_cl")])
+colnames(seur@reductions$umap@cell.embeddings) <- c("UMAP_1", "UMAP_2")
+Idents(seur) <- sce_inf$cell_lineages
+(load("./RData/03_cd8t_inf_renew.RData"))
+```
+
+### Fig.3A
+
+```{r}
+# # Fig.S3A
+density_plot <- function(sce_inf = sce_inf,
+                         geneCut = 0, 
+                         x = "UMAP_1",
+                         y = "UMAP_2",
+                         h = c(1, 1),
+                         n = 150){
+    p <- sce_inf %>%
+        ggplot(aes_string(x = x, y = y)) +
+        geom_point(alpha = .5, size = .2, color = "grey80") 
+    options(repr.plot.width = 4.5, repr.plot.height = 4)
+    tmp <- dplyr::filter(sce_inf, IFNG > geneCut)
+    p <- p + stat_density_2d(aes(fill = ..level..), 
+                    alpha = .5, geom = "polygon", 
+                    data = tmp, h = h,
+                    n = n)+
+              scale_fill_distiller(palette = "OrRd") +
+              ggtitle("IFNG+ density")
+    return(p)
+}
+identical(rownames(sce_inf), colnames(seur))
+sce_inf$IFNG <- seur@assays$RNA@data["IFNG", ]
+density_plot(sce_inf = sce_inf,
+             
+             geneCut = 0, h = c(1, 1))
+
+```
+
+### Fig.3B
+
+```{r}
+norm <- seur@assays$RNA$data
+cd8t_clusters <- c("CD8T_CCL4L2",
+                   "CD8T_HAVCR2",
+                   "CD8T_HSPA1A",
+                   "CD8T_MKI67",
+                   "CD8T_ISG15",
+                   "CD8T_MT1X",
+                   "CD8T_FGFBP2",
+                   "CD8T_TRAF3IP3",
+                   "CD8T_KLRC3",
+                   "CD8T_LEF1",
+                   "CD8T_CXCL13",
+                   "CD8T_CCR7", 
+                   "CD8T_FN1")
+clusters_SID_ob <- as.matrix(table(cd8t_inf$sampleType_AIT, cd8t_inf$clusters_anno))
+cellsum <- table(cd8t_inf$clusters_anno)
+SIDsum <- table(cd8t_inf$sampleType_AIT)
+clusters_SID_exp <- matrix(rep(cellsum, length(SIDsum)),nrow = length(SIDsum), byrow = TRUE)*matrix(rep(SIDsum, length(cellsum)),nrow = length(SIDsum), byrow = FALSE)/nrow(cd8t_inf)
+Ro_e <- t(clusters_SID_ob/clusters_SID_exp)
+range01 <- function(x, ...){(x - min(x, ...)) / (max(x, ...) - min(x, ...))}
+
+Ro_e_01 <- t(apply(Ro_e, 1, range01))
+
+###Ro/e
+bk <- c(seq(0, 1, by=0.01),seq(1.01,1.99,by=0.01))
+options(repr.plot.width = 10, repr.plot.height = 3)
+t(Ro_e[cd8t_clusters, ]) %>%
+  pheatmap::pheatmap(cluster_rows = FALSE,
+                     cluster_cols = FALSE,
+                     scale = "none",
+                     color = c(colorRampPalette(colors = c(sampleType_colors[1],"white"))(length(bk)/2),
+                               colorRampPalette(colors = c("white",sampleType_colors[2]))(length(bk)/2)),                     
+                     breaks = bk,
+                     border_color = NA, 
+                     display_numbers = T,
+                     annotation_legend = FALSE,
+                     gaps_col = c(5),
+                     number_color = "grey20", 
+                     fontsize_number = 10,
+                     width =  8, height = 3)
+
+genes <- read.table("./RData/03_CD8T_markerss.txt", sep = "\t")
+gene_scales <- as.data.frame(scale(t(as.matrix(norm[rev(genes$V1), rownames(cd8t_inf)]))))
+gene_scales_quant <- aggregate(gene_scales, by = list(cd8t_inf$clusters_anno), 
+                               FUN = function(x) quantile(x, .8))
+rownames(gene_scales_quant) <- gene_scales_quant$Group.1
+gene_scales_quant <- t(gene_scales_quant[, -1])
+clusters_anno <- data.frame(clusters_anno = cd8t_clusters)
+rownames(clusters_anno) <- clusters_anno$clusters_anno
+
+
+options(repr.plot.width = 10, repr.plot.height = 8)
+pheatmap(gene_scales_quant[rev(rownames(gene_scales_quant)), cd8t_clusters],
+                   scale = "row",
+                   cluster_rows = F, 
+                   cluster_cols = F,
+                   color = colorRampPalette(c(sampleType_colors[1], "white", sampleType_colors[2]))(100),
+              legend_breaks=seq(-1, 0, 1),
+              breaks = seq(-1, 1, length.out = 100),
+               border_color = "black",
+         width = 7, height = 7
+                   )
+```
+
+
+### Fig.3C
+
+```{r fig.width=4, fig.height=3}
+aa <- c("CD8T_CCL4L2","CD8T_HAVCR2", "CD8T_HSPA1A","CD8T_MKI67","CD8T_ISG15")
+cd8t_inf$IFNGcluster <- ifelse(cd8t_inf$clusters_anno %in% aa,
+                               "IFNG+cluster", "IFNG-cluster")
+usecol <- sampleType_colors
+names(usecol) <- c("IFNG-cluster", "IFNG+cluster")
+cd8t_inf %>% 
+  ggplot(aes(x = sampleType_AIT, fill = IFNGcluster)) +
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = usecol) +
+  theme_cowplot() +
+  RotatedAxis()
+```
+
+
+### Fig.S4A
+
+```{r}
+cd8sub <- subset(seur, cell_lineages == "CD8T")
+FeatureDimPlot(cd8sub, features = "IFNG", 
+               reduction = "UMAP")
+```
+
+
+### Fig.S4B
+
+```{r}
+ciberdat <- readRDS("./RData/01_ciberdat.rds")
+tcgaMix <- ciberdat$THCA
+tcgaclin <- data.table::fread("./RData/02_TCGA_HT_clin.csv")
+tcgaclin$sample <- str_replace_all(tcgaclin$sample, "-", ".")
+tcgaMix <- merge(tcgaMix, tcgaclin[, c("sample", "AIT")],
+                 by.x = "Mixture", by.y = "sample")
+cd8Mix <- tcgaMix %>% select(starts_with("CD8T"))
+tcgaMix$CD8Tsum <- apply(cd8Mix, 1, sum)
+# prop
+tcgaMix$IFNGpos <- tcgaMix$CD8T_CCL4L2 + tcgaMix$CD8T_HAVCR2 + tcgaMix$CD8T_ISG15
+dat <- data.frame(sample = tcgaMix$Mixture,
+                  AIT = tcgaMix$AIT,
+                  IFNGpos = tcgaMix[, "IFNGpos"]/tcgaMix$CD8Tsum)
+dat %>% dplyr::group_by(AIT) %>% dplyr::summarise(aa = mean(IFNGpos),
+                                                  bb = median(IFNGpos))
+ggboxplot(dat, x = "AIT", y = "IFNGpos", fill = "AIT",
+            width = 0.4) + xlab("") + ylab("CD8T Percent%") +
+    ggtitle("IFNG+ Cluster") +
+    stat_compare_means(method = "t.test",
+                       label.y.npc = 0.8) +
+    scale_fill_manual(values = AIT_col) + 
+    theme(legend.position = "none")
+ 
+```
+
+### Fig.S4C
+
+```{r}
+Tscore <- readRDS("./RData/03_Tscore_AUC.rds")
+identical(rownames(sce_inf), rownames(Tscore))
+CD8Tscore <- cbind(sce_inf, Tscore)
+CD8Tscore <- dplyr::filter(CD8Tscore, cell_lineages == "CD8T") 
+CD8Tscore$IFNgcluster <- ifelse(CD8Tscore$clusters_anno %in% 
+                                  c("CD8T_HAVCR2", "CD8T_CCL4L2", "CD8T_HSPA1A", "CD8T_ISG15", "CD8T_MKI67"), "IFNGpos", "IFNGneg")
+CD8Tscore$IFNgcluster <- factor(CD8Tscore$IFNgcluster)
+plist <- lapply(colnames(Tscore), function(z){
+  ggviolin(CD8Tscore, x = "IFNgcluster",
+           y = z, fill = "IFNgcluster", add = "boxplot",
+            add.params = list(fill = "white")) + 
+  scale_fill_manual(values = IFNGcell) + xlab("") + ylab(z) +
+    scale_x_discrete(limits = c("IFNGneg", "IFNGpos")) +
+  theme(legend.position = "none") + 
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+    stat_compare_means(label.y.npc = 0.8)
+})
+cowplot::plot_grid(plotlist = plist[c(2, 5, 1, 3, 4, 6)], nrow = 2)
+```
+
+
+```{r}
+sessionInfo()
+```
+

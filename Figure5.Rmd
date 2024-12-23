@@ -1,0 +1,299 @@
+---
+title: "Figure5"
+author: "SRF"
+date: "2024-12-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+```
+
+
+
+```{r}
+library(tidyverse)
+library(ggpubr)
+library(ggplot2)
+library(ggsci)
+library(RColorBrewer)
+library(cowplot)
+library(ggrepel)
+library(Seurat)
+library(SingleCellExperiment)
+library(scater)
+theme_set(theme_cowplot())
+```
+
+
+## setting
+
+```{r}
+source("./00_ColorSetting.R")
+source("./00_Function.R")
+```
+
+
+```{r}
+(load("./RData/03_cd8t_inf_renew.RData"))
+seur <- readRDS("./RData/seur.rds")
+```
+
+### Fig.5A
+
+```{r fig.width=3, fig.height=3}
+cd8tspc_inf <- cd8t_inf %>% 
+  subset(sampleType == "T" & expanded_clones == "expanded" & cloneType == "individual")
+options(repr.plot.width = 4, repr.plot.height = 4)
+cd8tspc_inf %>% 
+  ggviolin(x = "AIT", y = "NeoTCR8",
+           fill = "AIT", 
+           add = "boxplot", add.params = list(fill = "white")) +
+  stat_compare_means(comparisons = list(c("No", "Yes")), method = "wilcox.test") +
+  scale_fill_manual(values = AIT_col)
+
+```
+
+### Fig.5B
+
+```{r fig.width=3, fig.height=3}
+## Fig.4B
+cd8tspc_inf %>% 
+  ggviolin(x = "AIT", y = "cd8t_cellcycle",
+           fill = "AIT", 
+           add = "boxplot", add.params = list(fill = "white")) +
+  stat_compare_means(comparisons = list(c("No", "Yes")), method = "wilcox.test") +
+   scale_fill_manual(values = AIT_col)
+
+```
+
+### Fig.5C
+
+```{r fig.width=3, fig.height=3}
+cd8tspc_inf %>% 
+  ggviolin(x = "AIT", y = "expanded_clone_size",
+            fill = "AIT", 
+            add = "boxplot", add.params = list(fill = "white"),
+           yscale = "log2") +
+  stat_compare_means(comparisons = list(c("No", "Yes")), method = "wilcox.test") + scale_fill_manual(values = AIT_col)
+
+```
+
+
+### Fig.5D
+
+```{r fig.width=3, fig.height=4}
+#cd8tspc <- subset(cd8t, subset = cell_names %in% cd8tspc_inf$cell_names)
+## Fig.4D
+sid_inf <- readRDS("./RData/01_sid_inf.rds")
+sid_inf$indi_cell_per <- as.numeric(prop.table(table(cd8t_inf$cloneType, cd8t_inf$SID), 2)[1,rownames(sid_inf)])
+
+sid_inf %>% 
+  subset(sampleType == "PTC") %>% 
+  ggboxplot(x = "AIT", y = "indi_cell_per",
+            fill = "AIT", 
+            add = "jitter") +
+  stat_compare_means(comparisons = list(c("No", "Yes")), method = "wilcox.test") +
+  scale_fill_manual(values = AIT_col)
+```
+
+### Fig.5E
+
+```{r fig.width = 8, fig.height = 5}
+cd8t_paired_inf <- subset(cd8t_inf, TCR_BCR_detected == "TCR_paired")
+cd8t_clones <- split(cd8t_paired_inf$cdr3_paired_seq, f = cd8t_paired_inf$sampleType) %>% 
+  lapply(unique)
+names(cd8t_clones)
+cd8t_inf$cloneType2 <- ifelse(cd8t_inf$cloneType == "individual" & cd8t_inf$cdr3_paired_seq %in% cd8t_clones[["N"]], "normal-individual",
+                              ifelse(cd8t_inf$cloneType == "individual" & cd8t_inf$cdr3_paired_seq %in% cd8t_clones[["T"]], "tumor-individual", 
+                                     cd8t_inf$cloneType))
+table(cd8t_inf$cloneType2)
+tmp <- subset(cd8t_inf, expanded_clones == "expanded")
+tmp2 <- prop.table(table(tmp$clusters_anno, tmp$cloneType2), 1)
+rownames(tmp2[order(tmp2[,2], decreasing = TRUE),])
+
+cd8t_inf$cloneType2 <- factor(cd8t_inf$cloneType2, levels = c("normal-individual","shared", "tumor-individual"))
+usecol <- brewer.pal(12, "Paired")[c(2, 4,6)]
+names(usecol) <- c("normal-individual", "shared", "tumor-individual")
+cd8t_inf %>% 
+  subset(expanded_clones == "expanded") %>% 
+  subset(cloneType %in% c("shared", "individual")) %>% 
+  ggplot(aes(x = clusters_anno, fill = cloneType2)) +
+  geom_bar(position = "fill") +
+  scale_x_discrete(limits = rownames(tmp2[order(tmp2[,2]),])) +
+  theme_cowplot() +
+  RotatedAxis() + xlab("") + 
+  scale_fill_manual(values = usecol) +
+  theme(legend.title = element_blank())
+```
+
+
+### Fig.5F
+
+```{r fig.width=3, fig.height=3}
+##CXCL13+clones-Fig.5F
+cd8t <- subset(seur, cell_lineages == "CD8T")
+identical(colnames(cd8t), cd8t_inf$cell_names)
+cd8t_inf$CXCL13_count <- cd8t@assays$RNA@counts["CXCL13", ]
+cd8t_paired_inf <- subset(cd8t_inf, TCR_BCR_detected == "TCR_paired")
+
+cxcl13_clones <- subset(cd8t_paired_inf, 
+                        CXCL13_count > 0, 
+                        select = "cdr3_paired_seq") %>% unique()
+
+cd8t_inf$CXCL13_clones <- ifelse(cd8t_inf$cdr3_paired_seq %in% cxcl13_clones$cdr3_paired_seq, "CXCL13_clones", "others")
+
+sid_inf <- readRDS("./RData/01_sid_inf.rds")
+sid_inf$CXCL13_clones_prop <- prop.table(table(cd8t_inf$CXCL13_clones, cd8t_inf$SID), 2)["CXCL13_clones", rownames(sid_inf)]
+
+sid_inf %>%
+  subset(sampleType == "PTC") %>%
+  ggboxplot(.,
+            x = "AIT",
+            y = "CXCL13_clones_prop",
+            # combine = TRUE,
+            fill = "AIT", 
+            add = "jitter",
+            nrow = 1,
+            ggtheme = theme_cowplot()) +
+  scale_fill_manual(values = AIT_col) + 
+  stat_compare_means(comparisons = list(c("No", "Yes")), method = "wilcox") +
+  NoLegend() 
+```
+
+### Fig.5G
+
+```{r}
+# 
+propdat <- readRDS("./RData/01_scRNApropdat.rds")
+propdat.T <- dplyr::filter(propdat, sampleType == "PTC")
+# to-wider-data
+tmeMeta <- pivot_wider(data = propdat.T, id_cols = c("SID",  "AIT"), 
+              names_from = "clusters_anno", values_from = "percent") %>% as.data.frame()
+vars <- setdiff(colnames(tmeMeta), c("SID", "AIT"))
+T.testDIF <- batchTest_v(data = tmeMeta, group = "AIT", variables = vars)
+AIThighdif <- dplyr::filter(T.testDIF, p.value < 0.05) 
+AIThighdif <- AIThighdif$sig_names[AIThighdif$estimate.Yes > AIThighdif$estimate.No]  
+aa <- str_split(AIThighdif, "_") %>% sapply(., "[[", 1)
+aa[aa == "Treg"] <- "Tfh"
+aa <- data.frame(class = aa, cell = AIThighdif);
+aa <- split(aa$cell, aa$class)
+plist <- list()
+for (z in names(aa)){
+  dat <- propdat.T[propdat.T$clusters_anno %in% aa[[z]], ] 
+  if (nrow(dat) == 0){
+    next()
+  }
+  p <- ggboxplot(data = dat, x = "clusters_anno",
+          y = "percent", fill = "AIT", width = 0.5) +
+  scale_fill_manual(values = AIT_col) + xlab("") +
+  stat_compare_means(method = "t.test",
+                     aes(group = AIT,
+                         label = paste0("p = ", after_stat(p.format)))) +
+    ylab(paste0(z, " Percent %"))
+  plist[[z]] <- p
+}
+plist
+#saveRDS(AIThighdif, file = "./RData/05_AIThighdifcell.rds")
+```
+
+### Fig.5H
+
+### Fig.6C-TCGA和scRNA-seq cohort中AIT vs not AIT的基因差别
+
+```{r fig.width=5,fig.height=4}
+# TCGA-THCA
+difAIT <- readRDS("./RData/02_AITDEGs_TCGA.rds")
+chemoPattern <- list(chemokines = "^CXC|CCL|CCR|CX3|XCL|XCR",
+                     th1 = "IL2|IL12|IL18|IL27|IFNG|IL10|TNF$|TNF |LTA|LTB|STAT1|CCR5|CXCR3|IL12RB1|IFNGR1|TBX21|STAT4",
+                     th2 = "IL4|IL5|IL25|IL10|IL13|AREG|STAT6|GATA3|IL4R",
+                     th17 = "IL21|IL22|IL24|IL26|IL17A|IL17A|IL17F|IL17RA|IL10|RORC|RORA|STAT3|CCR4|CCR6|IL23RA|TGFB",
+                     treg = "IL35|IL10|FOXP3|IL2RA|TGFB")
+chemoG <- sapply(chemoPattern, grep, rownames(difAIT)) %>%
+  unlist() %>% unique()
+
+# 画图
+difAIT <- difAIT[chemoG, ]
+top10 <- top_n(difAIT, n = 10, wt = logFC) %>% rownames()
+difAIT$label <- ifelse(rownames(difAIT) %in% top10, rownames(difAIT), NA)
+
+mycols <- brewer.pal(12, "Paired")
+p1 <- ggplot(difAIT, 
+       aes(x = logFC, y = -log10(FDR))) +
+    geom_point(aes(size = logFC), color = mycols[1], alpha = 1/2) + 
+   scale_size_area(
+    breaks = c(0, 1, 2, 3, 4, 5, 6),
+    labels = c(0, 1, 2, 3, 4, 5, "> 6"),
+    name = "logFC") +
+  geom_text_repel(aes(label= label)) + 
+  ggtitle("TCGA-THCA")
+p1
+```
+
+
+```{r fig.width=5,fig.height=4}
+# 全部差异基因
+# tumorseu <- subset(seur, sampleType == "PTC")
+# tumorbulk <- PseudoBulk(tumorseu, id = "SID")  
+# pdata <- data.frame(samples = tumorseu$SID, AIT = tumorseu$AIT) %>% 
+#   as.tibble() %>% as.data.frame()
+# pdata <- pdata[!duplicated(pdata$samples), ]
+# identical(colnames(tumorbulk), pdata$samples)
+# library(edgeR)
+# y <- DGEList(tumorbulk, samples= pdata)
+# # normalized 
+# y <- calcNormFactors(y)
+# design <- model.matrix(~factor(AIT), y$samples)
+# y <- estimateDisp(y, design)
+# fit <- glmQLFit(y, design, robust=TRUE)
+# res <- glmQLFTest(fit, coef=ncol(design))
+# difDEGs = topTags(res, n = nrow(res$table))$table
+# saveRDS(difDEGs, file = "./RData/05_scRNAtum_AITdif.rds")
+difDEGs <- readRDS("./RData/05_scRNAtum_AITdif.rds")
+chemoG <- sapply(chemoPattern, grep, rownames(difDEGs)) %>%
+  unlist() %>% unique()
+dif_chemo_sc <- difDEGs[chemoG, ] 
+data <- dif_chemo_sc
+top10 <- top_n(data[data$FDR < 0.05, ], n = 10, wt = logFC) %>% rownames()
+data$label <- ifelse(rownames(data) %in% top10, rownames(data), NA)
+
+p2 <- ggplot(data, 
+       aes(x = logFC, y = -log10(FDR))) +
+  geom_point(aes(size = logFC), color = mycols[1], alpha = 1/2) + 
+   scale_size_area(
+    breaks = c(0, 1, 2, 3, 4, 5, 6),
+    labels = c(0, 1, 2, 3, 4, 5, "> 6"),
+    name = "logFC") +
+  geom_text_repel(aes(label= label)) + theme_classic() + ggtitle("scRNA-seq cohort")
+p2
+```
+
+
+```{r fig.width=5, fig.height=5}
+TLSsig <- c("CXCR5", "CCR7", "CXCL13", "IFNG",  "CXCL9" ,"CXCL11",
+"CCL19","XCL2", "XCL1", "LTB","LTA")
+tumorseu <- subset(seur, sampleType == "PTC")
+tumorseu$cell_lineages <- as.character(tumorseu$cell_lineages)
+tumorseu$cell_lineages[str_detect(tumorseu$clusters_anno, "^DC_")] <- "DC"
+
+AIThighdif <- readRDS("./RData/05_AIThighdifcell.rds")
+tumorseu$TLScluster <- ifelse(tumorseu$clusters_anno %in% AIThighdif, "TLS", "NoTLS")
+
+tumorseu <- subset(tumorseu, 
+                  cell_lineages %in% c("CD4T", "CD8T", "ucT/NK",
+                                                "B/plasma", "DC", "Myeloid"))
+tumorseu$TLScluster <- paste0(tumorseu$cell_lineages, "_", tumorseu$TLScluster)
+p <- DotPlot(tumorseu, features = TLSsig, 
+        group.by = "TLScluster") + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + xlab("") + ylab("") 
+p + coord_flip() 
+```
+
+
+```{r}
+sessionInfo()
+```
+
+

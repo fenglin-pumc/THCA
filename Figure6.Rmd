@@ -1,0 +1,449 @@
+---
+title: "Figure6"
+author: "SRF"
+date: "2024-12-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+```
+
+
+
+```{r}
+library(Seurat)
+library(ggplot2)
+library(ggsci)
+library(ggpubr)
+library(Matrix)
+library(cowplot)
+library(ggthemes)
+library(tidyverse)
+library(igraph)
+library(ggraph)
+library(AUCell)
+library(scales)
+library(tidygraph)
+theme_set(theme_cowplot())
+```
+
+
+## setting
+
+```{r}
+source("./00_ColorSetting.R")
+source("./00_Function.R")
+```
+
+
+
+```{r}
+seur <- readRDS("./RData/seur.rds")
+sce_inf <- readRDS("./RData/01_sce_inf.rds")
+```
+
+### Fig.6A
+
+cellphone-input
+
+```{r}
+TLScluster <- readRDS("./RData/05_AIThighdifcell.rds")
+# IFNGcluster <- c("CD8T_CCL4L2", "CD8T_HAVCR2",
+#                  "CD8T_ISG15")
+# TLScluster <- unique( c(TLScluster, IFNGcluster))
+# anno <- dplyr::filter(sce_inf, clusters_anno %in% TLScluster) %>%
+#   dplyr::filter(sampleType == "PTC") %>%
+#   rownames_to_column(var = "Cell") %>%
+#   mutate(cell_type =  clusters_anno) %>%
+#   select(Cell, cell_type)
+# write.table(anno, file = "./RData/06cellPhone/anno.txt",
+#             sep = "\t", quote = F, row.names = F)
+# # tumor
+# useseu <- subset(seur, cells = anno$Cell)
+# # matrix
+# dat <- useseu[["RNA"]]@data
+# if(!dir.exists("./RData/06cellPhone/mtx")){
+#   dir.create("./RData/06cellPhone/mtx")
+# }
+# writeMM(dat, file = "./RData/06cellPhone/mtx/matrix.mtx")
+# write(x = rownames(dat), file = "./RData/06cellPhone/mtx/features.tsv")
+# write(x = colnames(dat), file = "./RData/06cellPhone/mtx/barcodes.tsv")
+```
+
+
+### Fig.6B
+
+```{r}
+TLScluster <- readRDS("./RData/05_AIThighdifcell.rds")
+IFNGcluster <- c("CD8T_CCL4L2", "CD8T_HAVCR2", 
+                 "CD8T_ISG15") 
+TLScluster <- unique( c(TLScluster, IFNGcluster))
+# frequency
+propdat <- readRDS("./RData/01_scRNApropdat.rds")
+# cellAnno
+cellAnno <- propdat[, c("MajorCluster", "clusters_anno")] %>% .[!duplicated(.), ]
+cellAnno$MajorCluster <- plyr::mapvalues(cellAnno$MajorCluster, from = c("Macro", "DC"),
+                                         to = c("Myeloid", "Myeloid"))
+cordat <- dplyr::filter(propdat, clusters_anno %in% TLScluster) %>% 
+  dplyr::filter(sampleType == "PTC")
+cordat <- pivot_wider(cordat, id_cols = "SID", 
+                      names_from = "clusters_anno", values_from = "percent") %>%
+  column_to_rownames(var = "SID")
+dim(cordat) # 20, 17
+corDat <- cor(as.matrix(cordat))
+```
+
+
+
+```{r}
+threshold <- 0.5 
+cor_matrix <- corDat
+edges <- which(abs(cor_matrix) > threshold & lower.tri(cor_matrix), arr.ind = TRUE)
+edges_df <- data.frame(
+  from = rownames(cor_matrix)[edges[, 1]],
+  to = colnames(cor_matrix)[edges[, 2]],
+  weight = cor_matrix[edges]
+)
+
+
+net <- graph_from_data_frame(edges_df, directed = FALSE)
+V(net)$category <- cellAnno$MajorCluster[match(V(net)$name, cellAnno$clusters_anno)]
+
+set.seed(56789)
+ggraph(net, layout = "graphopt") +
+  geom_edge_link(aes(edge_alpha = weight,
+                     edge_width = weight,
+                     edge_color = weight), show.legend = TRUE) +
+  scale_edge_alpha_continuous(range = c(0.2, 0.8)) + 
+  scale_edge_width(range = c(0.5, 2)) + 
+  scale_edge_color_gradient(low = "lightblue", 
+                            high =  "darkblue") + 
+  geom_node_point(aes(color = category), size = 5) +  
+  geom_node_text(aes(label = name), repel = TRUE, size = 4) +
+  scale_color_manual(values = cell_lineages_colors) +
+  theme_void() +
+  ggtitle("")
+
+set.seed(3456)
+ggraph(net, layout = "graphopt") +
+  geom_edge_link(aes(edge_alpha = weight,
+                     edge_width = weight,
+                     edge_color = weight), show.legend = TRUE) +
+  scale_edge_alpha_continuous(range = c(0.2, 0.8)) + 
+  scale_edge_width(range = c(0.5, 2)) + 
+  scale_edge_color_gradient(low = "lightblue", 
+                            high =  "darkblue") +
+  geom_node_point(aes(color = category), size = 5) +  
+  geom_node_text(aes(label = name), repel = TRUE, size = 4) +
+  scale_color_manual(values = cell_lineages_colors) + 
+  theme_void() +
+  ggtitle("")
+#saveRDS(net, file = "../RData/06_TumorFreq_network.rds")
+```
+
+### Fig.3C
+
+```{r fig.width=4, fig.height=4}
+tmeMeta <- sce_inf %>% dplyr::filter(cell_lineages != "epithelial.cells") %>%
+  dplyr::filter(., sampleType == "PTC")
+tmeMeta$cell_lineages <- as.character(tmeMeta$cell_lineages)
+## Ma_CXCL9 prop.
+cxcl9Ma <- dplyr::filter(tmeMeta, cell_lineages == "Myeloid") %>% 
+  CalculatePro(meta = .,  ID = "SID", Cluster = "clusters_anno", 
+                       usecol = c("PID", "AIT")) %>% dplyr::filter(clusters_anno == "Ma_CXCL9")
+# IFNG+ prop.
+IFNGTcell <- dplyr::filter(tmeMeta, cell_lineages == "CD8T")
+IFNGTcell$clusters_anno2 <- plyr::mapvalues(IFNGTcell$clusters_anno,
+                                           from = c("CD8T_CCL4L2","CD8T_HAVCR2", "CD8T_HSPA1A", "CD8T_MKI67", "CD8T_ISG15"),
+                                           to = rep("IFNGpos", 5))
+IFNGTcell <- CalculatePro(meta = IFNGTcell, 
+                        ID = "SID", Cluster = "clusters_anno2", 
+                       usecol = c("PID", "AIT")) %>% 
+  dplyr::filter(clusters_anno2 == "IFNGpos")
+colnames(IFNGTcell)[2] <- "clusters_anno"
+identical(cxcl9Ma$SID, IFNGTcell$SID)
+dat <- cxcl9Ma %>% rename(Ma_CXCL9 = percent) %>% mutate(CD8T_IFNG = IFNGTcell$percent)
+
+ggscatter(dat, x = "Ma_CXCL9", y = "CD8T_IFNG", 
+          color = "AIT", size = 3) +
+  scale_color_manual(values = AIT_col) +
+  stat_cor(method = "spearman")
+```
+
+### Fig.6E-IHC
+
+### Fig.6F
+
+spatial data loading 
+
+```{r}
+scList <- readRDS("./RData/06_SClist.rds")
+cxcl9MaSig <- readRDS("./RData/06_CXCL9Masig.rds")
+IFNGCD8TSig <- readRDS("./RData/06_IFNGCD8Tsig.rds")
+neoTCR8 <- readRDS("./RData/06_neoTCR8.rds")
+Bsig <- c("CD19", "MS4A1", "CD79A", "CD79B")
+sigList <- list(IFNGsig = IFNGCD8TSig, CXCL9sig = cxcl9MaSig,
+                neoTCR8 = neoTCR8, Bsig = Bsig
+                )
+for (i in c("P1", "P2")){
+  countdat <- scList[[i]][["Spatial"]]$counts
+  cells_rankings <- AUCell_buildRankings(countdat, 
+                                       nCores = 5, plotStats = FALSE)
+  cellsAUC <- AUCell_calcAUC(geneSets = sigList, 
+                           cells_rankings, 
+                           aucMaxRank = 
+                             nrow(cells_rankings) * 0.05) %>%
+    getAUC() %>% t() %>% as.data.frame()
+  scList[[i]]$IFNGsig <- cellsAUC$IFNGsig
+  scList[[i]]$CXCL9sig <- cellsAUC$CXCL9sig
+  scList[[i]]$neoTCR8 <- cellsAUC$neoTCR8
+  scList[[i]]$Bsig <- cellsAUC$Bsig
+}
+
+plotdatlist <- list()
+for (i in c("P1", "P2")){
+  plotdat <- scList[[i]]@images$image@coordinates
+  plotdat$IFNGsig <- rescale(scList[[i]]$IFNGsig)
+  plotdat$CXCL9sig <- rescale(scList[[i]]$CXCL9sig)
+  plotdat$neoTCR8 <- rescale(scList[[i]]$neoTCR8) 
+  plotdat$Bsig <- rescale(scList[[i]]$Bsig)
+  # 四分位数
+  neoTCR8aa <- quantile(c(0, max(plotdat$neoTCR8))) %>% as.numeric()
+  INFGaa <- quantile(c(0, max(plotdat$IFNGsig))) %>% as.numeric()
+  CXCL9aa <- quantile(c(0, max(plotdat$CXCL9sig))) %>% as.numeric()
+  Bsigaa <- quantile(c(0, max(plotdat$Bsig))) %>% as.numeric()
+  #
+  plotdat$neoTCR8cut <- cut(plotdat$neoTCR8, 
+                            breaks = c(neoTCR8aa[1]-0.001,neoTCR8aa[2:4], neoTCR8aa[5]+0.001),
+                        labels = as.character(neoTCR8aa[-1]),)
+  plotdat$IFNGsigcut <- cut(plotdat$IFNGsig,
+                        breaks = c(INFGaa[1]-0.001,INFGaa[2:4], INFGaa[5]+0.001),
+                        labels = as.character(INFGaa[-1]),
+                        )
+  
+  plotdat$CXCL9sigcut <- cut(plotdat$CXCL9sig,
+                        breaks = c(CXCL9aa[1]-0.001,CXCL9aa[2:4], CXCL9aa[5]+0.001),
+                        labels = as.character(CXCL9aa[-1]))
+  
+  plotdat$Bsigcut <- cut(plotdat$Bsig,
+                        breaks = c(Bsigaa[1]-0.001,Bsigaa[2:4], Bsigaa[5]+0.001),
+                        labels = as.character(Bsigaa[-1]))
+  
+  plotdatlist[[i]] <- plotdat
+}
+```
+
+
+### Fig.6F
+
+
+```{r fig.width=5, fig.height=7}
+TLScenter <- readRDS("./RData/06_TLScenter.rds")
+plist <- list()
+for (i in c("P1", "P2")){
+  plist[[i]] <- ggplot(plotdatlist[[i]], 
+       aes(x = Spatial_2, y = -Spatial_1, color = Bsigcut)
+       ) + geom_point(size = 1) +
+  scale_color_manual(values = pal) + 
+ ggtitle(paste0("Bcell Signature in ", i)) +
+  geom_point(data = TLScenter[[i]], aes(x = x_center, y = y_center), 
+             color = "black", size = 1, shape = 8) 
+}
+cowplot::plot_grid(plotlist = plist, ncol = 1)
+```
+
+
+### Fig.6G
+
+```{r fig.width=10, fig.height=3}
+plist <- list()
+for (i in c("P1", "P2")){
+  # IFNG
+  p1 <-  ggplot(as.data.frame(plotdatlist[[i]]), 
+       aes(x = Spatial_2, y = -Spatial_1, color = IFNGsigcut)
+       ) + geom_point(size = 0.6) +
+  scale_color_manual(values = pal) + 
+    ggtitle(paste0("IFNG Signature in ", i))
+  # CXCL9
+  p2 <-  ggplot(as.data.frame(plotdatlist[[i]]), 
+       aes(x = Spatial_2, y = -Spatial_1, color = CXCL9sigcut)
+       ) + geom_point(size = 0.6) +
+  scale_color_manual(values = pal) + 
+     ggtitle(paste0("CXCL9 Signature in ", i))
+  plist[[i]] <- plot_grid(p1, p2, nrow = 1)
+}
+plist$P1
+plist$P2
+```
+
+
+### Fig.6H
+
+```{r fig.width=4, fig.height=6}
+plist <- list()
+for (i in c("P1", "P2")){
+  sp = ggscatter(scList[[i]]@meta.data, 
+               x = "IFNGsig", y = "CXCL9sig",
+               color = sampleType_colors[1], size = 0.5,
+               add = "reg.line", conf.int = TRUE) +
+  xlab("INFG+ CD8T cell") + ylab("CXCL9+ Macrophage") +
+    stat_cor() + ggtitle(i) 
+  plist[[i]] <- sp
+}
+cowplot::plot_grid(plotlist = plist, ncol = 1)
+```
+
+### Fig.S6A
+
+```{r fig.width=5, fig.height=4}
+selG <- c("CXCL9", "IFNG")
+GSE29265dat <- readRDS("./RData/06_GSE29265dat.rds")
+GSE29265dat <- GSE29265dat[selG, ] %>% t() %>% as.data.frame
+GSE29265dat$cohort <- "GSE29265"
+
+GSE33630dat <- readRDS("./RData/06_GSE33630dat.rds")
+GSE33630dat <- GSE33630dat[selG, ] %>% t() %>% as.data.frame
+GSE33630dat$cohort <- "GSE33630"
+
+thcadat <- readRDS("./RData/02_thcaTumordat.rds")
+thcadat <- thcadat[selG, ] %>% t() %>% as.data.frame
+thcadat$cohort <- "TCGA"
+
+plotdat <- rbind(GSE29265dat, GSE33630dat, thcadat)
+ggscatter(plotdat, x = "CXCL9", y = "IFNG",color = "cohort", 
+          add = "reg.line",  
+          conf.int = TRUE,   
+          cor.coef = TRUE,   
+          cor.method = "pearson", 
+          add.params = list(color = "cohort", fill = "lightgray")) + 
+  stat_cor(aes(color = cohort)) + 
+  scale_color_manual(values = unname(CLinecol))
+```
+
+
+### Fig.S6B
+
+```{r}
+# Distance-Calucation
+cell_datalist <- list()
+point_datalist <- list()
+for (z in c("P1", "P2")){
+  plotdat <- plotdatlist[[z]]
+  cell_data <- dplyr::select(plotdat, Spatial_1, Spatial_2)
+  cell_data$Spatial_1 <- -cell_data$Spatial_1
+  colnames(cell_data)[c(1:2)] <- c("y_coord", "x_coord")
+
+point_data <- TLScenter[[z]]
+colnames(point_data)[2:3] <- c("x_point", "y_point")
+distance_matrix <- matrix(NA, nrow = nrow(cell_data), ncol = nrow(point_data))
+# distance
+for (i in 1:nrow(cell_data)) {
+  for (j in 1:nrow(point_data)) {
+    distance_matrix[i, j] <- sqrt((cell_data$x_coord[i] - point_data$x_point[j])^2 +
+                                  (cell_data$y_coord[i] - point_data$y_point[j])^2)
+  }
+}
+#closest_point
+closest_point <- apply(distance_matrix, 1, which.min)  
+closest_distance <- apply(distance_matrix, 1, min) 
+cell_data$closest_point <- point_data$cluster[closest_point]
+cell_data$closest_distance <- closest_distance
+cell_data$closest_point <- as.numeric(cell_data$closest_point) %>% as.factor()
+cell_datalist[[z]] <- cell_data
+point_datalist[[z]] <- point_data
+}
+```
+
+
+
+
+```{r fig.width=12, fig.height=4}
+plist <- lapply(c("P1", "P2"), function(z){
+  cell_data <- cell_datalist[[z]]
+  point_data <- point_datalist[[z]]
+  ggplot(cell_data, aes(x = x_coord, y = y_coord, color = closest_point)) +
+  geom_point(size = 1) +  # 细胞点
+  geom_point(data = point_data, aes(x = x_point, y = y_point),
+             color = "red", size = 1) +  # 特定点
+  geom_segment(aes(xend = point_data$x_point[closest_point], 
+                   yend = point_data$y_point[closest_point]), color = "grey") +  # 最短距离线
+  scale_color_manual(values = brewer.pal(12, "Paired")) + 
+  labs(title = "Cells and Shortest Distance to Specific Points",
+       x = "X Coordinate",
+       y = "Y Coordinate")
+})
+cowplot::plot_grid(plotlist = plist, nrow = 1)
+```
+
+
+```{r fig.width=3, fig.height=3}
+for (i in c("P1", "P2")){
+  print(identical(rownames(cell_datalist[[i]]), colnames(scList[[i]])))
+  cell_datalist[[i]]$CXCL9sig <- scList[[i]]$CXCL9sig
+  cell_datalist[[i]]$IFNGsig <- scList[[i]]$IFNGsig
+}
+cell_datalist$P1$distanceCut <- cut(cell_datalist$P1$closest_distance, 
+                             breaks = c(0-0.01, 1000, 2000, 3000,4000, 5000, 6000),
+                             labels = c("0-1000", "1000-2000", "2000-3000",
+                                        "3000-4000", "4000-5000", "5000-6000"))
+cell_datalist$P2$distanceCut <- cut(cell_datalist$P2$closest_distance, 
+                             breaks = c(0-0.01, 2000, 4000, 6000,8000, 10000),
+                             labels = c("0-2000", "2000-4000", "4000-6000",
+                                        "6000-8000", "8000-10000"))
+plist <- list()
+for (i in c("P1", "P2")){
+  cell_data <- as.data.frame(cell_datalist[[i]])
+  for (z in c("CXCL9sig", "IFNGsig")){
+    sp1 <-  ggscatter(cell_data, x = "closest_distance", 
+                y = z,
+          alpha = 0.6, 
+          size = 0.5,
+          color = Mypal[1],
+   add = "reg.line", conf.int = TRUE) +
+  xlab("closest_distance") + ylab(z)+ stat_cor() + ggtitle(i)
+    sp2 <- ggboxplot(cell_data, x = "distanceCut", y = z, width = 0.6, fill = "distanceCut",
+          alpha = 0.6) +
+  scale_fill_manual(values = rev(distanPal)) + 
+  theme(axis.text.x = element_text(angle = 90,vjust = 0,hjust = 1)) + 
+  xlab("") +
+  theme(legend.position = "none")
+    aa <- paste0(i, z)
+    plist[[aa]] <- plot_grid(sp1, sp2, ncol = 1, rel_heights = c(.6, .4))
+  }
+}
+```
+
+### Fig.S6C
+
+```{r fig.width=4, fig.height=6}
+plist$P1CXCL9sig
+```
+
+### Fig.S6D
+
+```{r fig.width=4, fig.height=6}
+plist$P1IFNGsig
+```
+
+
+### Fig.S6E
+
+```{r fig.width=4, fig.height=6}
+plist$P2CXCL9sig
+```
+
+
+### Fig.S6F
+
+```{r fig.width=4, fig.height=6}
+plist$P2IFNGsig
+```
+
+
+```{r}
+sessionInfo()
+```
+

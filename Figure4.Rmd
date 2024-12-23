@@ -1,0 +1,300 @@
+---
+title: "Figure4"
+author: "SRF"
+date: "2024-12-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+```
+
+
+
+```{r}
+library(ggpubr)
+library(reshape2)
+library(data.table)
+library(Matrix)
+library(cowplot)
+library(ggthemes)
+library(ggsci)
+library(tidyverse)
+library(SCP)
+library(Seurat)
+library(superheat)
+library(ggsci)
+library(RColorBrewer)
+library(pheatmap)
+theme_set(theme_cowplot())
+```
+
+
+
+
+## setting
+
+```{r}
+source("./00_ColorSetting.R")
+```
+
+## data.loading
+
+```{r}
+seur <- readRDS("./RData/seur.rds")
+```
+
+
+### Fig.4A
+
+```{r fig.width=5, fig.height=3}
+(load("./RData/03_cd8t_inf_renew.RData"))
+TCRcd8 <-  subset(cd8t_inf, TCR_BCR_detected == "TCR_paired" & is.na(special_cells))
+TCRcd8$cloneID <- TCRcd8$cdr3_paired_seq
+clonDat <- table(TCRcd8$cloneID) %>% as.data.frame()
+clonDat <- table(clonDat$Freq) %>% as.data.frame()
+colnames(clonDat) <- c("Clone", "Freq")
+uniqC <- clonDat[clonDat$Clone==1, ]$Freq # mono
+totolC <- length(unique(TCRcd8$cloneID))
+clonDat$Clone <- as.numeric(clonDat$Clone)
+ggplot(clonDat, aes(x = log2(Clone), y = log2(Freq))) + 
+  geom_point(size = 3, color = sampleType_AIT_col[2]) + 
+  xlab("log2(clone size)") + 
+  ylab("log2(clone number)") +
+  scale_x_continuous(breaks = 0:6) + scale_y_continuous(breaks = c(0, 2, 4, 6, 8, 10, 12)) +
+  geom_vline(xintercept = 1, linetype = "dashed") +
+  ggtitle(paste0("Total ", totolC," TCRs; ", "\nUnique ", uniqC, " TCR of CD8T Cell"))
+```
+
+### Fig.4B
+
+```{r}
+(load("./RData/03_cd8t_inf_renew.RData"))
+cd8t_paired_inf <- subset(cd8t_inf, 
+                          TCR_BCR_detected == "TCR_paired" & is.na(special_cells))
+
+cd8t_paired_sampleType_inf_list <- split(cd8t_paired_inf, f = cd8t_paired_inf$sampleType)
+
+shared_clones <- unique(intersect(cd8t_paired_sampleType_inf_list[[1]]$cdr3_paired_seq, 
+                                  cd8t_paired_sampleType_inf_list[[2]]$cdr3_paired_seq))
+cd8t_inf$cloneType <- ifelse(cd8t_inf$cdr3_paired_seq %in% shared_clones, "shared", 
+                             ifelse(is.na(cd8t_inf$expanded_clones), NA, "individual"))
+
+options(repr.plot.width = 8, repr.plot.height = 4)
+cd8t_inf %>% 
+  subset(!is.na(IFNG_clones)) %>% 
+  ggplot(aes(x = IFNG_clones, fill = cloneType)) +
+  geom_bar() +
+  scale_fill_manual(values = TCRshare) +
+  facet_grid(~sampleType_AIT) 
+```
+
+```{r fig.width=8, fig.height=4}
+tmp <- cd8t_inf %>%  subset(!is.na(IFNG_clones))
+table(tmp$cloneType, tmp$IFNG_clones, tmp$sampleType_AIT)  %>%
+  as.data.frame() %>%
+  ggplot(aes(x = "", y = Freq, fill = Var1)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start=0) +
+  facet_wrap(Var2 ~ Var3, scales = "free", nrow = 2) +
+  scale_fill_manual(values = TCRshare) 
+```
+
+
+### Fig.4G
+
+
+```{r fig.width=5, fig.height=3}
+(load("./RData/03_cd8t_inf_renew.RData"))
+ht_shared_infg_inf <- cd8t_inf %>%
+  subset(cloneType == "shared" & IFNG_clones == "yes")
+
+scores <- ht_shared_infg_inf %>% 
+  group_by(sampleType_AIT, cdr3_paired_seq) %>% 
+  summarise(cyto = mean(Cytotoxicity), exhaustion = mean(Terminal_exhaustion), clonesize = n())
+scores$sampleType_AIT <- factor(scores$sampleType_AIT, 
+                               levels = c("AIT+NAT", "AIT+PTC", "AIT-NAT", "AIT-PTC"))
+
+p1 <- scores %>% 
+  subset(sampleType_AIT %in% c("AIT+NAT", "AIT+PTC")) %>% 
+  ggpaired(.,
+           x = "sampleType_AIT",
+           y = "clonesize",
+           id = "cdr3_paired_seq",
+           fill = "sampleType_AIT", 
+           line.color = "#D3D3D31A", 
+           line.size = 0.4,
+           ylab = "clonesize") +
+  scale_fill_manual(values = sampleType_AIT_col) + 
+  stat_compare_means(comparisons = list(c("AIT+NAT", "AIT+PTC"))) +
+  NoLegend() 
+
+
+p2 <- scores %>% 
+  subset(sampleType_AIT %in% c("AIT+NAT", "AIT+PTC")) %>% 
+  ggpaired(.,
+           x = "sampleType_AIT",
+           y = "cyto",
+           id = "cdr3_paired_seq",
+           fill = "sampleType_AIT", 
+           line.color = "#D3D3D31A", 
+           line.size = 0.4,
+           ylab = "cyto") +
+  scale_fill_manual(values = sampleType_AIT_col) + 
+  stat_compare_means(comparisons = list(c("AIT+NAT", "AIT+PTC"))) +
+  NoLegend() 
+plot_grid(p1, p2, nrow = 1)
+```
+
+
+```{r fig.width=4, fig.height=3}
+scores %>% 
+  ggpaired(.,
+           x = "sampleType_AIT",
+           y = "exhaustion",
+           id = "cdr3_paired_seq",
+           fill = "sampleType_AIT", 
+           line.color = "#D3D3D31A", 
+           line.size = 0.4,
+           ylab = "exhaustion") +
+  scale_fill_manual(values = sampleType_AIT_col) + 
+  stat_compare_means(comparisons = list(c("AIT+NAT", "AIT+PTC"),
+                                        c("AIT-NAT", "AIT-PTC"))) +
+  NoLegend() 
+```
+
+### Fig.4I
+
+```{r fig.width=3, fig.height=8}
+cd8sub <- subset(seur, cell_lineages == "CD8T")
+FeatureStatPlot(cd8sub, c("GZMK", "GZMB", "GZMA", "NKG7"),
+                group.by = "sampleType_AIT", ncol = 1, legend.position = "none")
+```
+
+
+
+
+### Fig.S5A
+
+```{r fig.width=5, fig.height=3}
+(load("./RData/03_cd8t_inf_renew.RData"))
+cd8t_paired_inf <- subset(cd8t_inf, TCR_BCR_detected == "TCR_paired" & is.na(special_cells))
+cd8t_paired_inf$sizeCategory <- cut(cd8t_paired_inf$expanded_clone_size, 
+                                    breaks = c(0, 1, 5, 10, max(cd8t_paired_inf$expanded_clone_size)+1),
+                                    labels = c("=1", "1-5", "5-10", ">10")
+                                    )
+ggplot(cd8t_paired_inf, aes(x = UMAP1_cl, y = UMAP2_cl)) +
+  geom_point(aes(color = sizeCategory),  
+             size = 0.5) +
+  scale_color_manual(values = CloneSize) + xlab("UMAP 1") + ylab("UMAP 2") +
+  theme(legend.title = element_blank())
+```
+
+
+
+### Fig.S5B
+
+```{r fig.width=3, fig.height=10}
+FeatureStatPlot(subset(seur, cell_lineages == "Epithelial.cells"), 
+                c("TG", "TSHR", "TPO", "TFF3", "SLC26A7"),
+                group.by = "sampleType_AIT", ncol = 1, legend.position = "none")
+```
+
+
+### Fig.S5E
+
+
+```{r}
+(load("./RData/03_cd8t_inf_renew.RData"))
+cd8t_inf$sampleType <- plyr::mapvalues(cd8t_inf$sampleType, from = c("N", "T"),
+                                       to = c("NAT", "PTC"))
+
+cd8t_clone_inf <- subset(cd8t_inf, TCR_BCR_detected == "TCR_paired")
+cd8t_shared_clones_inf <- subset(cd8t_clone_inf, cloneType == "shared")
+cd8t_shared_clones_df <- as.data.frame(table(cd8t_shared_clones_inf$sampleType_AIT, 
+                                             cd8t_shared_clones_inf$cdr3_paired_seq,
+                                             cd8t_shared_clones_inf$IFNG_clones)) %>% 
+  split(f = .$Var3) %>% 
+  lapply(FUN = function(x){
+    y <- dcast(Var2 ~ Var1, value.var = "Freq", data = x)
+    y <- y[apply(y[-1], 1, sum)>0,]})
+clonesize <- rowSums(cd8t_shared_clones_df[[2]][-1])
+cd8t_shared_clones_df[[2]] <- cd8t_shared_clones_df[[2]][order(clonesize, decreasing = TRUE), ]
+tnk_markers <- c("TCF7", "LAG3","TIGIT","ITGAE", "PDCD1","CTLA4","HAVCR2", 
+                 "CD69",  "CD28","CD27", "ICOS", "CD28", "GZMK",
+                 "GZMB","GZMA","PRF1", "NKG7","GNLY", "FCRL6", "IFNG", 
+                 "TNF","CXCR6","CXCL13"
+)
+cs <- ScaleData(seur, features = tnk_markers)
+typical_clones <- as.character(cd8t_shared_clones_df[[2]][c(1:3, 5:8, 10:12, 4, 9, 20:23, 25:28), 1])
+typical_cells_inf <- subset(cd8t_inf, cdr3_paired_seq %in% typical_clones)
+
+target_cells_inf <- typical_cells_inf
+tcr_clones <- target_cells_inf[c("cdr3_paired_seq", "expanded_clone_size")] 
+tcr_clones <- tcr_clones[!duplicated(tcr_clones$cdr3_paired_seq),]
+rownames(tcr_clones) <- tcr_clones$cdr3_paired_seq
+tcr_clones <- tcr_clones[typical_clones, ]
+tcr_clones$tcr_seq <- 1:nrow(tcr_clones)
+target_cells_inf$tcr_seq <- tcr_clones[target_cells_inf$cdr3_paired_seq, "tcr_seq"]
+target_cells_inf <- target_cells_inf[order(target_cells_inf$tcr_seq,
+                                           target_cells_inf$sampleType, 
+                                           target_cells_inf$clusters_anno), ]
+
+expr_mat <- GetAssayData(cs, slot = "scale.data")[tnk_markers, target_cells_inf$cell_names]
+dim(expr_mat)
+annotation_colors <- list(AIT = AIT_col, sampleType = sampleType_colors)
+bk <- c(seq(0, 2.5, by=0.01),seq(2.51, 5, by=0.01))
+pheatmap(expr_mat[, target_cells_inf$cell_names], 
+                   # scale = "row",
+                   cluster_rows = FALSE,
+                   cluster_cols = FALSE,
+                   annotation_col = target_cells_inf[c("sampleType", "AIT")],
+                   show_colnames = FALSE,
+                   gaps_col = cumsum(table(target_cells_inf$tcr_seq))[-length(table(target_cells_inf$tcr_seq))],
+                   # gaps_row = c(6, 11, 21),
+                   color = c(colorRampPalette(colors = c("grey20","white"))(length(bk)/2),colorRampPalette(colors = c("white","red"))(length(bk)/2)),
+                   legend_breaks=seq(0, 5, 2.5),
+                   breaks=bk,
+                   annotation_colors = annotation_colors,
+                   border_color = NA,
+                   width = 12, height = 5
+)
+```
+
+### Fig.S5F
+
+```{r fig.width=3, fig.height=3}
+(load("./RData/03_cd8t_inf_renew.RData"))
+cd8t_paired_inf <- subset(cd8t_inf, TCR_BCR_detected == "TCR_paired" & is.na(special_cells))
+
+cd8t_paired_inf$pathology_vdjdb[is.na(cd8t_paired_inf$pathology_vdjdb)] <- "Not"
+cd8t_paired_inf$pathology_vdjdb[cd8t_paired_inf$pathology_vdjdb == "Human"] <- "Not"
+dat <- data.frame(as.matrix(table(cd8t_paired_inf$pathology_vdjdb, cd8t_paired_inf$AIT)))
+colnames(dat)[1:2] <- c("Virus", "AIT")
+df <- dat %>%
+  group_by(Virus) %>%
+  mutate(RelativeValue = Freq / sum(Freq) * 100)
+
+# bar
+ggplot(df, aes(x = Virus, y = RelativeValue, fill = AIT)) +
+  geom_bar(stat = "identity", width = 0.5) + # position_dodge 
+  labs(x = "Subgroup", y = "Relative Percentage (%)") +  
+  scale_fill_manual(values = AIT_col) + 
+  scale_y_continuous(labels = scales::percent_format(scale = 1))+  
+  xlab("")
+```
+
+### Fig.S5G
+
+```{r fig.width=4, fig.height=3}
+(load("./RData/03_cd8t_inf_renew.RData"))
+cd8t_inf %>% 
+  ggviolin(x = "sampleType_AIT", y = "virus_specific",
+            fill = "sampleType_AIT", 
+            add = "boxplot", add.params = list(fill = "white")) +
+  scale_fill_manual(values = sampleType_AIT_col) + xlab("") +
+  NoLegend()
+```
+

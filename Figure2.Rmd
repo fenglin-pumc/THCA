@@ -1,0 +1,320 @@
+---
+title: "Figure2"
+author: "SRF"
+date: "2024-12-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+```
+
+
+
+```{r}
+library(reshape2)
+library(tidyverse)
+library(clusterProfiler)
+library(data.table)
+library(edgeR)
+library(Seurat)
+library(SCP)
+library(ggpubr)
+library(cowplot)
+library(ggrepel)
+library(ggthemes)
+library(ggsci)
+library(RColorBrewer)
+library(monocle)
+library(pheatmap)
+library("KEGGREST") 
+theme_set(theme_cowplot())
+```
+
+
+## setting
+
+```{r}
+source("./00_ColorSetting.R")
+source("./00_Function.R")
+```
+
+## data.loading
+
+```{r}
+seur <- readRDS("./RData/seur.rds")
+sce_inf <- readRDS("./RData/01_sce_inf.rds")
+seur@reductions$umap@cell.embeddings <- as.matrix(sce_inf[, c("UMAP1_cl", "UMAP2_cl")])
+colnames(seur@reductions$umap@cell.embeddings) <- c("UMAP_1", "UMAP_2")
+Idents(seur) <- sce_inf$cell_lineages
+```
+
+## Figure2
+
+### Fig.2A
+
+```{r fig.width=20, fig.height=4}
+epi <- subset(seur, cell_lineages == "Epithelial.cells")
+CellDimPlot(epi, 
+            group.by = "clusters_anno", split.by = "sampleType_AIT", nrow = 1,
+            theme_use = "theme_blank") 
+```
+
+### Fig.2B-E
+
+```{r}
+monocle_cds <- readRDS("./RData/02_monocle_cds.rds")
+# Fig.2B
+plot_cell_trajectory(monocle_cds, color_by = "sampleType",
+                     cell_size = 0.1) +
+  scale_color_manual(values = sampleType_colors) +
+  facet_wrap(~sampleType, nrow = 1) + NoLegend()
+# Fig.2C
+aucdat <- readRDS("./RData/02_EpiAUCscore.rds") %>%
+  column_to_rownames(var = "CellBarcode")
+monocle_cds$TDS <- aucdat$TDS;
+monocle_cds$BRS <- aucdat$BRS;
+lowCol <- brewer.pal(12, "Paired")[4]
+highCol <- brewer.pal(12, "Paired")[6]
+plot_cell_trajectory(monocle_cds, 
+                     color_by = "BRS", cell_size = 0.5)+
+  scale_color_gradientn(colors = c(lowCol, "white", highCol))
+
+# Fig.2D
+plot_cell_trajectory(monocle_cds, 
+                     color_by = "TDS", cell_size = 0.5) +
+  scale_color_gradientn(colors = c(lowCol, "white", highCol))
+# Fig.2E
+plot_cell_trajectory(monocle_cds, color_by = "HT", cell_size = 0.1) +
+  scale_color_manual(values = AIT_col) +
+  facet_wrap(~HT, nrow = 1)
+```
+
+
+```{r}
+# Fig.2F
+options(repr.plot.width = 10, repr.plot.height = 10)
+difs <- readRDS("./RData/02_AITepidif.rds")
+difs$dotsize <- 0
+aa <- difs$tum_logFC > 0 & difs$tfc_logFC > 0
+difs$dotsize[aa] <- (difs$tum_logFC[aa] + difs$tfc_logFC[aa])/2
+bb <- difs$tum_logFC < 0 & difs$tfc_logFC < 0
+difs$dotsize[bb] <- (difs$tum_logFC[bb] + difs$tfc_logFC[bb])/2
+ggplot(difs, aes(x = tum_logFC, y = tfc_logFC)) +
+  geom_point(aes(size = PCT, fill = dotsize), 
+             color = "black", shape = 21) +
+  scale_size_continuous(range = c(0.5, 2)) +
+  scale_fill_gradientn(colors = c(sampleType_AIT_col[c(2)], "grey", sampleType_AIT_col[c(3,4)]))+
+geom_text_repel(aes(label = genes)) +
+geom_hline(yintercept = 0, linetype = "dashed") +
+geom_vline(xintercept = 0, linetype = "dashed")
+```
+
+
+```{r}
+# GSEA-analysis
+tum_dif <- readRDS("./RData/02_tumAITdif.rds")
+tfc_dif <- readRDS("./RData/02_tfcAITdif.rds")
+TERM2GENE <- readRDS("./RData/02_IFNG_AMP_TERM2GENE.rds")
+# tumor
+gseares.t <- My_GSEA2(dat = data.frame(Gene = rownames(tum_dif),
+                                     fc = tum_dif$avg_log2FC),
+                    gmt = TERM2GENE,
+                    des = F, pvalueCutoff = 0.05)
+# tfc
+gseares.n <- My_GSEA2(dat = data.frame(Gene = rownames(tfc_dif),
+                                     fc = tfc_dif$avg_log2FC),
+                    gmt = TERM2GENE,
+                    des = F, pvalueCutoff = 0.05)
+
+```
+
+
+
+```{r}
+# Fig.2G-tumor
+gseares.t@result$ID
+enrichplot::gseaplot2(gseares.t, geneSetID = 2, 
+                      subplots = 1:2,
+                      pvalue_table = TRUE,
+                       color = sampleType_colors[2], 
+                      title = "Antigen processing and presentation")
+
+enrichplot::gseaplot2(gseares.t, geneSetID = 1, 
+                      subplots = 1:2,
+                      pvalue_table = TRUE,
+                       color = sampleType_colors[2], 
+                      title = "IFNG hallmark gene set")
+
+```
+
+
+```{r}
+# Fig.2G-TFC
+gseares.n@result$ID
+enrichplot::gseaplot2(gseares.n, geneSetID = 2, 
+                      subplots = 1:2,
+                      pvalue_table = TRUE,
+                       color = sampleType_colors[2], 
+                      title = "Antigen processing and presentation")
+
+enrichplot::gseaplot2(gseares.n, geneSetID = 1, 
+                      subplots = 1:2,
+                      pvalue_table = TRUE,
+                       color = sampleType_colors[2], 
+                      title = "IFNG hallmark gene set")
+
+```
+
+
+```{r}
+#Fig.2J 2K-Experimemt
+```
+
+
+## FigureS3
+
+
+```{r}
+# Fig.S3A
+# scRNA-seq difgene
+htdif.n <- tfc_dif %>% 
+  dplyr::filter(p_val_adj < 0.05 & avg_log2FC > 1) %>% rownames()
+htdif.t <- tum_dif %>% 
+  dplyr::filter(p_val_adj < 0.05 & avg_log2FC > 1) %>% rownames()
+plot.n <- intersect(htdif.n, htdif.t) %>% unique()
+# scRNA-seq-Pseduo-bulk-tumor
+epiBulk <- read.table("./RData/02_epi_bulk.txt", header = T,
+                      sep = "\t")
+boxplot(epiBulk[, 1:6]) # log2 already
+tumordat <- epiBulk[, str_detect(colnames(epiBulk), "_T_")] 
+colnames(tumordat) <- str_remove(colnames(tumordat), "_T_GEX")
+normaldat <- epiBulk[, str_detect(colnames(epiBulk), "_N_")] 
+colnames(normaldat) <- str_remove(colnames(normaldat), "_N_GEX")
+clindat <- readRDS("./RData/02_clin.rds")
+anno <- clindat[, c("AIT", "BRAFV600E")] 
+colnames(anno)[2] <- "BRAF"
+anno <- arrange(anno, AIT)
+# Fig.S3A
+pheatmap(tumordat[intersect(rownames(tumordat),plot.n), rownames(anno)], 
+         scale = "row", 
+         cluster_rows = T,
+         cluster_cols = F, 
+         show_rownames = T, 
+         show_colnames = T,
+         clustering_method = "ward.D2",
+         color = colorRampPalette(c(sampleType_colors[1], "white", sampleType_colors[2]))(100),
+         breaks = seq(-2, 2, length.out = 100),
+         border_color = "black",
+         annotation_col = anno,
+         width = 7, height = 5,
+         main = "HT's DEGs in Tumor Sample of scRNA-seq Cohort",
+         annotation_colors = list(BRAF = BRAF_col,
+                                  AIT = AIT_col))
+# Fig.S3B
+pheatmap(normaldat[intersect(rownames(normaldat),plot.n), rownames(anno)], 
+         scale = "row", 
+         cluster_rows = T,
+         cluster_cols = F, 
+         show_rownames = T, 
+         show_colnames = T,
+         clustering_method = "ward.D2",
+         color = colorRampPalette(c(sampleType_colors[1], "white", sampleType_colors[2]))(100),
+         breaks = seq(-2, 2, length.out = 100),
+         border_color = "black",
+         annotation_col = anno,
+         width = 7, height = 5,
+         main = "HT's DEGs in NATs of scRNA-seq Cohort",
+         annotation_colors = list(BRAF = BRAF_col,
+                                  AIT = AIT_col))
+```
+
+
+```{r}
+# TCGA-THCA
+thcadat <- readRDS("./RData/02_thcaTumordat.rds") # 58387   502
+# withAIT
+tcgaclin <- data.table::fread("./RData/02_TCGA_HT_clin.csv")
+tcgaclin$sample <- str_replace_all(tcgaclin$sample, "-", ".")
+comS <- intersect(tcgaclin$sample, colnames(thcadat))
+length(comS); nrow(tcgaclin)
+tcgaclin <- tcgaclin[match(comS,tcgaclin$sample), ]
+tcgaclin <- arrange(tcgaclin, AIT)
+thcadat <- thcadat[, tcgaclin$sample]
+pdata <- tcgaclin[, c("sample", "AIT", "BRAF")]
+pdata$BRAF <- plyr::mapvalues(pdata$BRAF, from = c(0, 1),
+                              to = c("WT", "Mut"))
+identical(colnames(thcadat), pdata$sample)
+pdata <- column_to_rownames(pdata, var = "sample")
+# Fig.3C
+dist_matrix <- dist(t(thcadat[plot.n, ])) # 计算距离矩阵
+hc <- hclust(dist_matrix, method = "ward.D2")
+clusters <- cutree(hc, k = 3)
+clusters <- data.frame(row.names = names(clusters),
+                       cluster = clusters)
+clusters <- merge(clusters, pdata, by.x = 0, by.y = 0) %>%
+  column_to_rownames(var = "Row.names") %>% arrange(AIT, cluster)
+pheatmap(thcadat[plot.n, rownames(clusters)],
+         scale = "row", cluster_rows = T,
+         cluster_cols = F, 
+         show_rownames = T, 
+         show_colnames = F,
+         clustering_method = "ward.D2",
+         color = colorRampPalette(c(sampleType_colors[1], "white", sampleType_colors[2]))(100),
+         breaks = seq(-2, 2, length.out = 100),
+         border_color = "black",
+         annotation_col = pdata,
+         width = 7, height = 5,
+         main = "HT's DEGs in TCGA-THCA",
+         annotation_colors = list(BRAF = BRAF_col,
+                                  AIT = AIT_col))
+```
+
+
+```{r}
+# Fig.S3D
+## DEG analysis
+y <- DGEList(thcadat, samples= pdata)
+y <- calcNormFactors(y)
+design <- model.matrix(~factor(AIT), y$samples)
+y <- estimateDisp(y, design)
+fit <- glmQLFit(y, design, robust=TRUE)
+res <- glmQLFTest(fit, coef=ncol(design))
+difDEGs = topTags(res, n = nrow(res$table))$table
+htDEGs.TGCA <- difDEGs
+saveRDS(htDEGs.TGCA, file = "./RData/02_AITDEGs_TCGA.rds")
+```
+
+
+
+```{r}
+gseares.tcga <- My_GSEA2(dat = data.frame(
+  Gene = rownames(htDEGs.TGCA),
+  fc = htDEGs.TGCA$logFC),
+                    gmt = TERM2GENE,
+                    des = F, pvalueCutoff = 0.05)
+
+gseares.tcga@result$ID
+# Fig.S3D
+enrichplot::gseaplot2(gseares.tcga, geneSetID = 2, 
+                      subplots = 1:2,
+                      pvalue_table = TRUE,
+                       color = sampleType_colors[2], 
+                      title = "Antigen processing and presentation")
+
+enrichplot::gseaplot2(gseares.tcga, geneSetID = 1, 
+                      subplots = 1:2,
+                      pvalue_table = TRUE,
+                       color = sampleType_colors[2], 
+                      title = "IFNG Hallmark")
+
+```
+
+
+
+```{r}
+sessionInfo()
+```
+
