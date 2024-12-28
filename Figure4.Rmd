@@ -65,7 +65,7 @@ ggplot(clonDat, aes(x = log2(Clone), y = log2(Freq))) +
   ylab("log2(clone number)") +
   scale_x_continuous(breaks = 0:6) + scale_y_continuous(breaks = c(0, 2, 4, 6, 8, 10, 12)) +
   geom_vline(xintercept = 1, linetype = "dashed") +
-  ggtitle(paste0("Total ", totolC," TCRs; ", "\nUnique ", uniqC, " TCR of CD8T Cell"))
+  ggtitle(paste0("Total ", totolC," CD8T cell clones"))
 ```
 
 ### Fig.4B
@@ -148,6 +148,7 @@ p2 <- scores %>%
 plot_grid(p1, p2, nrow = 1)
 ```
 
+### Fig.4H
 
 ```{r fig.width=4, fig.height=3}
 scores %>% 
@@ -173,8 +174,7 @@ FeatureStatPlot(cd8sub, c("GZMK", "GZMB", "GZMA", "NKG7"),
                 group.by = "sampleType_AIT", ncol = 1, legend.position = "none")
 ```
 
-
-
+## FigureS5
 
 ### Fig.S5A
 
@@ -204,7 +204,6 @@ FeatureStatPlot(subset(seur, cell_lineages == "Epithelial.cells"),
 
 
 ### Fig.S5E
-
 
 ```{r}
 (load("./RData/03_cd8t_inf_renew.RData"))
@@ -273,6 +272,7 @@ cd8t_paired_inf$pathology_vdjdb[is.na(cd8t_paired_inf$pathology_vdjdb)] <- "Not"
 cd8t_paired_inf$pathology_vdjdb[cd8t_paired_inf$pathology_vdjdb == "Human"] <- "Not"
 dat <- data.frame(as.matrix(table(cd8t_paired_inf$pathology_vdjdb, cd8t_paired_inf$AIT)))
 colnames(dat)[1:2] <- c("Virus", "AIT")
+dat
 df <- dat %>%
   group_by(Virus) %>%
   mutate(RelativeValue = Freq / sum(Freq) * 100)
@@ -296,5 +296,10 @@ cd8t_inf %>%
             add = "boxplot", add.params = list(fill = "white")) +
   scale_fill_manual(values = sampleType_AIT_col) + xlab("") +
   NoLegend()
+```
+
+
+```{r}
+sessionInfo()
 ```
 
