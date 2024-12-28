@@ -50,14 +50,19 @@ sce_inf <- readRDS("./RData/01_sce_inf.rds")
 
 ## Figure1
 
+### Fig.1A flowchart
+### Fig.1B
+
 ```{r}
-## Fig.1A flowchart
-## Fig.1B
 options(repr.plot.width = 8, repr.plot.height = 6)
 CellDimPlot(seur, group.by = "major_cellTypes", reduction = "UMAP",
             palette = "Set2") +
   theme_blank()
-## Fig.1C
+```
+
+### Fig.1C
+
+```{r}
 seur$TCR_BCR_use <- str_remove(seur$TCR_BCR_detected, "_paired") %>%
   str_remove(., "_single")
 seur$TCR_BCR_use <- factor(seur$TCR_BCR_use, levels = names(Colnecol))
@@ -65,8 +70,14 @@ seur$TCR_BCR_use <- factor(seur$TCR_BCR_use, levels = names(Colnecol))
 CellDimPlot(seur, group.by = "TCR_BCR_use", reduction = "UMAP") +
   scale_color_manual(values = Colnecol) +
   theme_blank()
-## Fig.1D mIHC
-# Fig.1E
+```
+
+
+### Fig.1D mIHC
+
+### Fig.1E
+
+```{r fig.width=6, fig.height=3}
 meta <- sce_inf
 tmeMeta <- meta %>% dplyr::filter(cell_lineages != "Epithelial.cells")
 tmepro <- CalculatePro(meta = tmeMeta, ID = "SID", 
@@ -86,24 +97,25 @@ tmepic <- lapply(c("CD4T", "B/plasma"), function(z){
     RotatedAxis()  + NoLegend()
 })
 cowplot::plot_grid(plotlist = tmepic, nrow = 1)
-# Fig.1F
+```
+
+### Fig.1F
+
+```{r fig.width=4, fig.height=3}
 ihcScore <- readRDS("./RData/01_mIHCtmescore.rds")
-tmepic <- lapply(c("CD20percent", "CD3percent"), function(z){
-  ggboxplot(ihcScore, x = "Group1", y = z, 
+ggboxplot(ihcScore, x = "Group1", y = "CD20percent", 
              fill = "Group1", width = 0.4) + 
     geom_point(size = 2) +
    scale_fill_manual(values = sampleType_AIT_col) +
     stat_compare_means(label.y.npc = 0.8) + 
     scale_x_discrete(limits = names(sampleType_AIT_col)) +
-   xlab("") + ylab("Percent %") + ggtitle(z) +
+   xlab("") + ylab("Percent %") + ggtitle("CD20percent") +
    RotatedAxis()  + NoLegend()
-})
-cowplot::plot_grid(plotlist = tmepic, nrow = 1)
 ```
 
+### Fig.1G
 
-```{r fig.width=18, fig.height=5}
-# Fig.1G
+```{r fig.width=4, fig.height=3}
 sid_inf <- readRDS("./RData/01_sid_inf.rds")
 sid_inf$sampleType_AIT <- factor(sid_inf$sampleType_AIT, levels = names(sampleType_AIT_col))
 
@@ -112,7 +124,11 @@ ggplot(sid_inf, aes(x = PC1, y = PC2, color = sampleType_AIT)) +
   geom_point(size = 5) +
   xlab("PCA 1") + ylab("PCA 2") + 
   scale_color_manual(values = sampleType_AIT_col) 
-# Fig.1I
+```
+
+### Fig.1H
+
+```{r fig.width=18, fig.height=5}
 tme_inf <- subset(sce_inf, !(cell_lineages %in% c("Epithelial.cells")))
 mat <- as.matrix(prop.table(table(tme_inf$SID, tme_inf$clusters_anno), margin = 1))
 mat <- as.data.frame(mat)
@@ -144,8 +160,32 @@ log2_TN %>%
         RotatedAxis() + ylab("") + xlab("log2FC")
 ```
 
+### Fig.1I
+
+```{r fig.width=7, fig.height=5}
+bhdis_cd8t <- readRDS("./RData/01_bhatt_df.rds")
+cellLevel <- c("Stroma", "Myeloid", "CD4T", "CD8T", "B/plasma", "ucT/NK")
+pdat <- pivot_longer(bhdis_cd8t, cols = AIT_TN:N, names_to = "Type",
+                     values_to = "BhattacharyyaDistance")
+usecol <-  c(AIT_col,sampleType_colors)
+names(usecol) <- c("NAIT_TN", "AIT_TN", "N", "T")
+pics <- lapply(cellLevel, function(z){
+  usedat <- dplyr::filter(pdat, cell_types == z)
+    ggboxplot(usedat, x = "Type", y = "BhattacharyyaDistance", 
+              fill = "Type", add = "none", width = 0.8,
+              outlier.shape = NA) + 
+        ggtitle(z) + xlab("") + ylab("") +
+      scale_fill_manual(values = usecol) + 
+      theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+        NoLegend()
+})
+plot_grid(plotlist = pics, nrow = 2)
+```
+
+
+### Fig.1J
+
 ```{r fig.width=9, fig.height=8}
-## Fig.1J
 cell_anno <- data.frame(clusters_num = sce_inf$clusters,
                         clusters_anno = sce_inf$clusters_anno,
                         cell_lineages = sce_inf$cell_lineages,
@@ -204,9 +244,9 @@ pheatmap::pheatmap(z_scale,
 
 ```
 
+### Fig.1K
 
 ```{r fig.width=6, fig.height=2}
-# Fig.1K
 sce_inf$celltypes <- cell_anno[sce_inf$clusters_anno, "type"]
 
 tme_inf <- subset(sce_inf, celltypes != "epi")
@@ -219,8 +259,9 @@ tme_inf %>%
 
 ## FigureS1
 
+### Fig.S1A
+
 ```{r}
-# Fig.S1A
 options(repr.plot.width = 10, repr.plot.height = 6)
 genes <- c("CD3D", "CD4", "CD8A", "TYROBP", "KLRF1",
            "MS4A1", "SDC1", "CD68", "HLA-DRA", "EPCAM",
@@ -243,7 +284,7 @@ annotate_figure(p, top = text_grob("Fig.S1A markers",
     })
 ```
 
-
+### Fig.S1B
 
 ```{r fig.width=6, fig.height=3}
 QCmetric <- readRDS("./RData/01_QCsigDat.rds")
@@ -258,14 +299,18 @@ pics <- lapply(fea, function(z){
     scale_fill_manual(values = cell_lineages_colors) + 
     NoLegend()
 })
-# Fig.S1B
 plot_grid(plotlist = pics[c(1,2)], nrow = 1)
-# Fig.S1C
+```
+
+### Fig.S1C
+
+```{r}
 plot_grid(plotlist = pics[c(3,4)], nrow = 1)
 ```
 
+### Fig.S1D
+
 ```{r fig.width=12, fig.height=3}
-# Fig.S1D
 fea <- c("nCount_RNA", "nFeature_RNA", "subsets_Mt_percent", "subsets_Ri_percent")
 pics <- lapply(fea, function(z){
   ggboxplot(seur@meta.data, x = "cell_lineages", y = z, 
@@ -279,9 +324,9 @@ pics <- lapply(fea, function(z){
 plot_grid(plotlist = pics, nrow = 1)
 ```
 
+### Fig.S1E
 
 ```{r fig.width=20, fig.height=8}
-## Fig.S1E
 seur@reductions$umap@cell.embeddings <- as.matrix(sce_inf[, c("UMAP1_cl", "UMAP2_cl")])
 colnames(seur@reductions$umap@cell.embeddings) <- c("UMAP_1", "UMAP_2")
 Idents(seur) <- sce_inf$cell_lineages
@@ -293,8 +338,9 @@ CellDimPlot(seur, group.by = "clusters_anno",
            bg_color = NA, nrow = 2)
 ```
 
+### Fig.S1F
+
 ```{r fig.width=5, fig.height=12}
-# Fig.S1F
 tmeMeta <- sce_inf %>% 
   dplyr::filter(cell_lineages != "Epithelial.cells")
 setdiff(cell_anno$clusters_anno, unique(tmeMeta$clusters_anno))
@@ -312,7 +358,8 @@ distHeat <- calTissueDist(dat.tb = dat, byPatient = F,
 cell_order <- x$tree_row$order
 oedat <- as.matrix(distHeat)
 bk <- c(seq(0, 1, by=0.01),seq(1.01,1.99,by=0.01))
-oedat[cell_order, ] %>%
+sp_order <- c("AIT+PTC", "AIT+NAT", "AIT-NAT", "AIT-PTC")
+oedat[cell_order, sp_order] %>%
   pheatmap::pheatmap(cluster_rows = FALSE,
                      cluster_cols = FALSE,
                      scale = "none",
@@ -330,23 +377,17 @@ oedat[cell_order, ] %>%
 
 
 
-
-
-
 ## FigureS2
 
-
+### Fig.S2A
 
 ```{r}
-# Fig.S2A
 tumorR <- cell_anno[cell_anno$type == "Tumor-related", ]$clusters_anno
 propdat <- readRDS("./RData/01_scRNApropdat.rds")
 propdat <- pivot_wider(propdat, id_cols = c(SID, PID, AIT, sampleType, sampleType_AIT), names_from = clusters_anno, values_from = percent)
 
 useN <- colnames(propdat)[6:ncol(propdat)]
 
-difaa <- batchWilcox_v(data = as.data.frame(propdat), 
-                       group = "sampleType", variables = useN)
 difaa <- batchkruskal_v(data = as.data.frame(propdat), group = "sampleType_AIT", variables = useN)
 useP <- difaa[difaa$sig_names %in% tumorR, ] %>% dplyr::filter(p.value < 0.05)
 TumorRorder <- c(Myeorder, Stromaorder)
@@ -354,7 +395,6 @@ useP <- intersect(TumorRorder, useP$sig_names)
 useP <- useP[!str_detect(useP, "HSPA1A")] %>%
   .[!str_detect(., "MKI67")]
 ```
-
 
 
 ```{r fig.width=12, fig.height=8}
@@ -373,15 +413,12 @@ for (z in useP){
   plist[[z]] <- p
   p
 }
-# Fig.S2A
 cowplot::plot_grid(plotlist = plist, nrow = 3)
 ```
 
-
-
+### Fig.S2B
 
 ```{r fig.width=8, fig.height=6}
-# Fig.S2B
 ciberdat <- fread("./RData/CIBERSORTx/CIBERSORTx_Job14_06_reference_N100_noepi_withISG_inferred_phenoclasses.CIBERSORTx_Job14_06_reference_N100_noepi_withISG_inferred_refsample.bm.K999.txt", data.table = FALSE)
 ciberdat <- column_to_rownames(ciberdat, var = "NAME")
 aa <- intersect(names(c(CD4Tcol, CD8Tcol, NKcol, Bcol, Myecol, Strcol)),
@@ -394,6 +431,8 @@ pheatmap(ciberdat, cluster_rows = T, cluster_cols = F,
          breaks = seq(-2, 2, length.out = 100)
          )
 ```
+
+
 
 ```{r fig.width=12, fig.height=8}
 ciberdat <- readRDS("./RData/01_ciberdat.rds")
@@ -418,14 +457,25 @@ for (i in names(ciberdat)){
   prow <- cowplot::plot_grid(plotlist = tmepic, nrow = 3)
   plist[[i]] <- cowplot::plot_grid(prow, legend_r, ncol = 1, rel_heights = c(1, .1))
 }
-# Fig.S2C
-plist$THCA
-# Fig.S2D
-plist$GSE29265
-# Fig.S2E
-plist$GSE33630
 ```
 
+### Fig.S2C
+
+```{r fig.width=8, fig.height=6}
+plist$THCA
+```
+
+### Fig.S2D
+
+```{r fig.width=8, fig.height=6}
+plist$GSE29265
+```
+
+### Fig.S2E
+
+```{r fig.width=8, fig.height=6}
+plist$GSE33630
+```
 
 ```{r}
 sessionInfo()
