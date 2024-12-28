@@ -111,6 +111,8 @@ edges_df <- data.frame(
 
 net <- graph_from_data_frame(edges_df, directed = FALSE)
 V(net)$category <- cellAnno$MajorCluster[match(V(net)$name, cellAnno$clusters_anno)]
+#saveRDS(net, file = "./RData/06_TumorFreq_network.rds")
+net <- readRDS("./RData/06_TumorFreq_network.rds")
 
 set.seed(56789)
 ggraph(net, layout = "graphopt") +
@@ -127,21 +129,6 @@ ggraph(net, layout = "graphopt") +
   theme_void() +
   ggtitle("")
 
-set.seed(3456)
-ggraph(net, layout = "graphopt") +
-  geom_edge_link(aes(edge_alpha = weight,
-                     edge_width = weight,
-                     edge_color = weight), show.legend = TRUE) +
-  scale_edge_alpha_continuous(range = c(0.2, 0.8)) + 
-  scale_edge_width(range = c(0.5, 2)) + 
-  scale_edge_color_gradient(low = "lightblue", 
-                            high =  "darkblue") +
-  geom_node_point(aes(color = category), size = 5) +  
-  geom_node_text(aes(label = name), repel = TRUE, size = 4) +
-  scale_color_manual(values = cell_lineages_colors) + 
-  theme_void() +
-  ggtitle("")
-#saveRDS(net, file = "../RData/06_TumorFreq_network.rds")
 ```
 
 ### Fig.3C
@@ -210,7 +197,7 @@ for (i in c("P1", "P2")){
   plotdat$CXCL9sig <- rescale(scList[[i]]$CXCL9sig)
   plotdat$neoTCR8 <- rescale(scList[[i]]$neoTCR8) 
   plotdat$Bsig <- rescale(scList[[i]]$Bsig)
-  # 四分位数
+  # quantile
   neoTCR8aa <- quantile(c(0, max(plotdat$neoTCR8))) %>% as.numeric()
   INFGaa <- quantile(c(0, max(plotdat$IFNGsig))) %>% as.numeric()
   CXCL9aa <- quantile(c(0, max(plotdat$CXCL9sig))) %>% as.numeric()
@@ -385,18 +372,12 @@ for (i in c("P1", "P2")){
   cell_datalist[[i]]$CXCL9sig <- scList[[i]]$CXCL9sig
   cell_datalist[[i]]$IFNGsig <- scList[[i]]$IFNGsig
 }
-cell_datalist$P1$distanceCut <- cut(cell_datalist$P1$closest_distance, 
-                             breaks = c(0-0.01, 1000, 2000, 3000,4000, 5000, 6000),
-                             labels = c("0-1000", "1000-2000", "2000-3000",
-                                        "3000-4000", "4000-5000", "5000-6000"))
-cell_datalist$P2$distanceCut <- cut(cell_datalist$P2$closest_distance, 
-                             breaks = c(0-0.01, 2000, 4000, 6000,8000, 10000),
-                             labels = c("0-2000", "2000-4000", "4000-6000",
-                                        "6000-8000", "8000-10000"))
+
 plist <- list()
 for (i in c("P1", "P2")){
   cell_data <- as.data.frame(cell_datalist[[i]])
   for (z in c("CXCL9sig", "IFNGsig")){
+    aa <- paste0(i, z)
     sp1 <-  ggscatter(cell_data, x = "closest_distance", 
                 y = z,
           alpha = 0.6, 
@@ -404,14 +385,7 @@ for (i in c("P1", "P2")){
           color = Mypal[1],
    add = "reg.line", conf.int = TRUE) +
   xlab("closest_distance") + ylab(z)+ stat_cor() + ggtitle(i)
-    sp2 <- ggboxplot(cell_data, x = "distanceCut", y = z, width = 0.6, fill = "distanceCut",
-          alpha = 0.6) +
-  scale_fill_manual(values = rev(distanPal)) + 
-  theme(axis.text.x = element_text(angle = 90,vjust = 0,hjust = 1)) + 
-  xlab("") +
-  theme(legend.position = "none")
-    aa <- paste0(i, z)
-    plist[[aa]] <- plot_grid(sp1, sp2, ncol = 1, rel_heights = c(.6, .4))
+    plist[[aa]] <- sp1
   }
 }
 ```
