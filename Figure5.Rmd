@@ -51,22 +51,20 @@ cd8tspc_inf %>%
   ggviolin(x = "AIT", y = "NeoTCR8",
            fill = "AIT", 
            add = "boxplot", add.params = list(fill = "white")) +
-  stat_compare_means(comparisons = list(c("No", "Yes")), method = "wilcox.test") +
+  stat_compare_means(comparisons = list(c("No", "Yes")), 
+                     method = "wilcox.test") +
   scale_fill_manual(values = AIT_col)
-
 ```
 
 ### Fig.5B
 
 ```{r fig.width=3, fig.height=3}
-## Fig.4B
 cd8tspc_inf %>% 
   ggviolin(x = "AIT", y = "cd8t_cellcycle",
            fill = "AIT", 
            add = "boxplot", add.params = list(fill = "white")) +
   stat_compare_means(comparisons = list(c("No", "Yes")), method = "wilcox.test") +
    scale_fill_manual(values = AIT_col)
-
 ```
 
 ### Fig.5C
@@ -76,17 +74,15 @@ cd8tspc_inf %>%
   ggviolin(x = "AIT", y = "expanded_clone_size",
             fill = "AIT", 
             add = "boxplot", add.params = list(fill = "white"),
-           yscale = "log2") +
+           yscale = "log2") + 
+  ylab("Clone size") + 
   stat_compare_means(comparisons = list(c("No", "Yes")), method = "wilcox.test") + scale_fill_manual(values = AIT_col)
-
 ```
 
 
 ### Fig.5D
 
 ```{r fig.width=3, fig.height=4}
-#cd8tspc <- subset(cd8t, subset = cell_names %in% cd8tspc_inf$cell_names)
-## Fig.4D
 sid_inf <- readRDS("./RData/01_sid_inf.rds")
 sid_inf$indi_cell_per <- as.numeric(prop.table(table(cd8t_inf$cloneType, cd8t_inf$SID), 2)[1,rownames(sid_inf)])
 
@@ -124,6 +120,7 @@ cd8t_inf %>%
   geom_bar(position = "fill") +
   scale_x_discrete(limits = rownames(tmp2[order(tmp2[,2]),])) +
   theme_cowplot() +
+  ylab("Fraction of CD8 clones \n among CD8T cluster") +
   RotatedAxis() + xlab("") + 
   scale_fill_manual(values = usecol) +
   theme(legend.title = element_blank())
@@ -166,7 +163,6 @@ sid_inf %>%
 ### Fig.5G
 
 ```{r}
-# 
 propdat <- readRDS("./RData/01_scRNApropdat.rds")
 propdat.T <- dplyr::filter(propdat, sampleType == "PTC")
 # to-wider-data
@@ -214,9 +210,10 @@ chemoPattern <- list(chemokines = "^CXC|CCL|CCR|CX3|XCL|XCR",
 chemoG <- sapply(chemoPattern, grep, rownames(difAIT)) %>%
   unlist() %>% unique()
 
-# 画图
+
 difAIT <- difAIT[chemoG, ]
 top10 <- top_n(difAIT, n = 10, wt = logFC) %>% rownames()
+top10 <- c(top10, "CCR7", "LTB") %>% unique()
 difAIT$label <- ifelse(rownames(difAIT) %in% top10, rownames(difAIT), NA)
 
 mycols <- brewer.pal(12, "Paired")
@@ -234,7 +231,6 @@ p1
 
 
 ```{r fig.width=5,fig.height=4}
-# 全部差异基因
 # tumorseu <- subset(seur, sampleType == "PTC")
 # tumorbulk <- PseudoBulk(tumorseu, id = "SID")  
 # pdata <- data.frame(samples = tumorseu$SID, AIT = tumorseu$AIT) %>% 
@@ -267,26 +263,21 @@ p2 <- ggplot(data,
     labels = c(0, 1, 2, 3, 4, 5, "> 6"),
     name = "logFC") +
   geom_text_repel(aes(label= label)) + theme_classic() + ggtitle("scRNA-seq cohort")
+
 p2
 ```
 
+### Fig.5I
 
-```{r fig.width=5, fig.height=5}
+```{r fig.width=7, fig.height=4}
 TLSsig <- c("CXCR5", "CCR7", "CXCL13", "IFNG",  "CXCL9" ,"CXCL11",
 "CCL19","XCL2", "XCL1", "LTB","LTA")
 tumorseu <- subset(seur, sampleType == "PTC")
-tumorseu$cell_lineages <- as.character(tumorseu$cell_lineages)
-tumorseu$cell_lineages[str_detect(tumorseu$clusters_anno, "^DC_")] <- "DC"
-
-AIThighdif <- readRDS("./RData/05_AIThighdifcell.rds")
-tumorseu$TLScluster <- ifelse(tumorseu$clusters_anno %in% AIThighdif, "TLS", "NoTLS")
-
-tumorseu <- subset(tumorseu, 
-                  cell_lineages %in% c("CD4T", "CD8T", "ucT/NK",
-                                                "B/plasma", "DC", "Myeloid"))
-tumorseu$TLScluster <- paste0(tumorseu$cell_lineages, "_", tumorseu$TLScluster)
-p <- DotPlot(tumorseu, features = TLSsig, 
-        group.by = "TLScluster") + 
+useCluster <- c("Tfh_TCF7", "Tfh_GZMA", "CD8T_LEF1",
+                "B_MEF2B", "B_MKI67",  "B_TCL1A",  "DC_LAMP3",    "DC_LILRA4",   "Ma_CXCL9")
+p <- DotPlot(subset(tumorseu, clusters_anno %in% useCluster),
+        features = TLSsig, 
+        group.by = "clusters_anno") + 
   theme(axis.text.x = element_text(angle = 90, hjust = 1)) + xlab("") + ylab("") 
 p + coord_flip() 
 ```
