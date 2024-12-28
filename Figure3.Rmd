@@ -38,7 +38,6 @@ Idents(seur) <- sce_inf$cell_lineages
 ### Fig.3A
 
 ```{r}
-# # Fig.S3A
 density_plot <- function(sce_inf = sce_inf,
                          geneCut = 0, 
                          x = "UMAP_1",
@@ -63,7 +62,6 @@ sce_inf$IFNG <- seur@assays$RNA@data["IFNG", ]
 density_plot(sce_inf = sce_inf,
              
              geneCut = 0, h = c(1, 1))
-
 ```
 
 ### Fig.3B
@@ -185,7 +183,6 @@ ggboxplot(dat, x = "AIT", y = "IFNGpos", fill = "AIT",
                        label.y.npc = 0.8) +
     scale_fill_manual(values = AIT_col) + 
     theme(legend.position = "none")
- 
 ```
 
 ### Fig.S4C
