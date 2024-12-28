@@ -1,1 +1,179 @@
-### not finished :)
+---
+title: "Figure7"
+author: "SRF"
+date: "2024-12-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+```
+
+
+```{r}
+library(tidyverse)
+library(cowplot)
+library(ggsci)
+library(ggthemes)
+library(ggpubr)
+library(Seurat)
+theme_set(theme_cowplot())
+options(stringsAsFactors = FALSE)
+```
+
+
+
+## setting
+
+```{r}
+source("./00_ColorSetting.R")
+```
+
+
+## Dataloading
+
+
+```{r}
+IHCdat <- readRDS("./RData/07_IHCdat.rds")
+```
+
+
+```{r}
+cxcl9_ihc <- IHCdat %>% dplyr::filter(!is.na(CXCL9_invasive))
+dim(cxcl9_ihc)
+```
+
+
+
+### Fig.7B
+
+```{r fig.width=4, fig.height=4}
+cxcl9_ihc$size.log <- log2(cxcl9_ihc$Tumor.Size)
+ggscatter(cxcl9_ihc[cxcl9_ihc$AIT == "Yes", ], 
+          x = "CXCL9_invasive", y = "size.log", 
+          color = "AIT", size = 3,
+          add = "reg.line") +
+  scale_color_manual(values = AIT_col) +
+  stat_cor(method = "spearman") + 
+  xlab("CXCL9 H-score in Tumor Invasion Margin") +
+  ylab("Tumor Size")
+```
+
+
+### Fig.7C
+
+```{r fig.width=4, fig.height=4}
+sizecol <- NTcol
+names(sizecol) <- c("1", "0")
+cxcl9_ihc$T1a <- factor(cxcl9_ihc$T1a, levels = c("1", "0"))
+cxcl9_ihc %>% 
+  ggboxplot(.,
+            x = "T1a",
+            y = "CXCL9_invasive",
+            fill = "T1a",
+            add = "jitter",
+            nrow = 1,
+            ggtheme = theme_cowplot(),
+            facet.by = "AIT") +
+  scale_fill_manual(values = sizecol) + 
+  ylab("CXCL9 H-score in Tumor Invasion Margin") + 
+  stat_compare_means(comparisons = list(c("0", "1")),
+                     method.args = list(alternative = "less")) +
+  NoLegend() 
+```
+
+### Fig.7D
+
+```{r fig.width=4, fig.height=4}
+aa <- median(cxcl9_ihc$MACIS)
+aa
+cxcl9_ihc$MACIS_gr <- ifelse(cxcl9_ihc$MACIS >= aa, "H", "L")
+maciscol <- NTcol
+names(maciscol) <- c("L", "H")
+cxcl9_ihc %>% 
+  ggboxplot(.,
+            x = "MACIS_gr",
+            y = "CXCL9_invasive",
+            fill = "MACIS_gr",
+            add = "jitter",
+            nrow = 1,
+            ggtheme = theme_cowplot(), 
+            facet.by = "AIT") +
+   ylab("CXCL9 H-score in Tumor Invasion Margin") + 
+  stat_compare_means(comparisons = list(c("H", "L")),
+                     method.args = list(alternative = "less")) +
+  scale_fill_manual(values = maciscol) + 
+  NoLegend() 
+```
+### Fig.7E
+
+```{r fig.width=3, fig.height=4}
+cxcl9_ihc %>% 
+  ggboxplot(.,
+            x = "AIT",
+            y = "CXCL9_invasive",
+            fill = "AIT",
+            add = "jitter",
+            nrow = 1) +
+  scale_fill_manual(values = AIT_col) +
+  ylab("CXCL9 H-score in Tumor Invasion Margin") + 
+  stat_compare_means(comparisons = list(c("Yes", "No")),
+                     method.args = list(alternative = "greater")) +
+  NoLegend() 
+```
+
+### Fig.7F
+
+
+```{r }
+tcga_cxcl9 <- read.csv("./RData/07_TCGA_CXCL9.csv")
+tcga_cxcl9$T1a <- ifelse(tcga_cxcl9$Tstage %in% c("T1a"), "T1a", ">T1a")
+
+sizecol2 <- NTcol
+names(sizecol2) <- c("T1a",">T1a")
+tcga_cxcl9$T1a <- factor(tcga_cxcl9$T1a, levels = c("T1a", ">T1a"))
+tcga_cxcl9 %>% 
+  subset(!(Tstage %in% c("T1"))) %>% 
+  ggboxplot(.,
+            x = "T1a",
+            y = "CXCL9",
+            fill = "T1a",
+            add = "jitter",
+            nrow = 1,
+            facet.by = "AIT",
+            ggtheme = theme_cowplot()) +
+  scale_fill_manual(values = sizecol2) +
+  ylab("CXCL9 H-score in Tumor Invasion Margin") + 
+  stat_compare_means(comparisons = list(c("T1a", ">T1a")),  method.args = list(alternative = "greater")) +
+  NoLegend() 
+```
+
+### Fig.7G
+
+```{r}
+tcga_cxcl9$MACIS_gr <- ifelse(tcga_cxcl9$MACIS >= 3.7, "H", "L")
+tcga_cxcl9$MACIS_gr <- factor(tcga_cxcl9$MACIS_gr, levels = c("L", "H"))
+tcga_cxcl9 %>% 
+  subset(!is.na(MACIS_gr)) %>%
+  ggboxplot(.,
+            x = "MACIS_gr",
+            y = "CXCL9",
+            fill = "MACIS_gr",
+            add = "jitter",
+            nrow = 1,
+            ggtheme = theme_cowplot(), 
+            facet.by = "AIT") +
+  ylab("CXCL9 H-score in Tumor Invasion Margin") + 
+  scale_fill_manual(values = maciscol) + 
+  stat_compare_means(comparisons = list(c("L", "H")),  
+                     method.args = list(alternative = "greater")) +
+  NoLegend() 
+```
+
+
+```{r}
+sessionInfo()
+```
+
