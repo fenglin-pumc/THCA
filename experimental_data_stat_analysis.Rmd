@@ -1,0 +1,322 @@
+---
+title: "FigureExperiment"
+author: "SRF"
+date: "2025-10-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+```
+
+
+```{r}
+library(tidyverse)
+library(cowplot)
+library(ggplot2)
+library(ggsci)
+library(ggpubr)
+library(pheatmap)
+library(Seurat)
+theme_set(theme_cowplot())
+```
+
+
+
+```{r}
+source("./00_ColorSetting.R")
+```
+
+
+```{r}
+IHCdat <- readRDS("./RData/07_IHCdat.rds")
+dim(IHCdat)
+```
+
+### Fig.2H-MHC-II
+
+```{r fig.width=4, fig.height=4}
+MHC_IIdat <- IHCdat %>% dplyr::select(PID, MHC_II, AIT) %>%
+  dplyr::filter(!is.na(MHC_II))
+
+table(MHC_IIdat$AIT)
+ggboxplot(MHC_IIdat, x = "AIT", y = "MHC_II", 
+          fill = "AIT", width = 0.6) +
+  geom_jitter() + 
+  scale_fill_manual(values = AIT_col) +
+  stat_compare_means() + theme(legend.position = "") +
+  ylab("MHC-II+ Malignant Cell (%)") 
+```
+
+### Fig.2K
+
+```{r}
+mhcMFI <- openxlsx::read.xlsx("./RData/Exp_MHC_INFG_MFI.xlsx", sheet = 1)
+mhcMFI$IFNG <- str_remove(mhcMFI$IFNG, "ng/ml")
+mhcMFI$IFNG <- paste0("D", mhcMFI$IFNG)
+# remove NA
+mhcMFI <- mhcMFI[!is.na(mhcMFI$MFI), ]
+mhcMFI$CellLine <- plyr::mapvalues(mhcMFI$CellLine, 
+                                   from = c("TPC1", "BCPAP"),
+                                   to = c("TPC-1", "B-CPAP"))
+
+mhcMFI %>% 
+  ggbarplot(x = "CellLine", y = "MFI", add = "mean_se",
+            fill = "IFNG", width = 0.8,
+            position = position_dodge(0.8)) +
+  xlab("") + scale_fill_manual(values = IFNGcol) +
+  ylab("MFI:MHC-I") + stat_compare_means(aes(group = IFNG))
+```
+
+### Fig.2M
+
+```{r}
+scratchdat <- readRDS("./RData/02_scratchdat.rds")
+my_comparisons <- list(c("D10", "D0"), c("D100", "D0"))
+plist <- list()
+for (i in c("B-CPAP", "TPC-1")){
+  plist[[i]] <- ggbarplot(scratchdat[scratchdat$CellLine == i, ], 
+            x = "Time", y = "Rate", fill = "IFNG",
+          add = "mean_se", 
+          position = position_dodge(0.7),  width = 0.5) +
+    scale_fill_manual(values = IFNGcol) + 
+  theme(axis.text.x = element_text(angle = 0,vjust = 0,hjust = 1)) + xlab("") + ylab("Migration rate (%)") + 
+    ggtitle(i) 
+}
+plist
+```
+
+p-value
+
+```{r}
+scratchdat$group <- paste0(scratchdat$CellLine, scratchdat$Time)
+datlist <- split(scratchdat, scratchdat$group)
+pvalues <- sapply(datlist, function(z){
+  p1 <- t.test(Rate~IFNG, data = subset(z, IFNG != "D10"))$p.value
+  p2 <- t.test(Rate~IFNG, data = subset(z, IFNG != "D100"))$p.value
+  data.frame(IFNG100 = p1, IFN10 = p2)
+})
+pvalues
+```
+
+### Fig.3E-IFN-G
+
+```{r fig.width=6, fig.height=4}
+IFNGdat <- dplyr::select(IHCdat, PID, AIT, IFNG_NATCore, IFNG_TumorCore) %>%
+  dplyr::filter(!(is.na(IFNG_NATCore) & is.na(IFNG_TumorCore)))
+na.omit(IFNGdat$IFNG_NATCore) %>% length() # 66
+na.omit(IFNGdat$IFNG_TumorCore) %>% length() # 61
+IFNGdat <- pivot_longer(IFNGdat, cols = IFNG_NATCore:IFNG_TumorCore, 
+                        names_to = "Class", values_to = "H_score") %>% na.omit()
+ggboxplot(IFNGdat,
+            x = "Class", y = "H_score", 
+          fill = "AIT", alpha = 1, width = 0.5) +
+  xlab("") + scale_fill_manual(values = AIT_col) + 
+  ylab("H score") +
+  stat_compare_means(aes(group = AIT), method = "t.test",
+                     method.args = list(alternative = "greater")) +
+  ggtitle("IHC: IFN-γ score")
+```
+
+### Fig.4E
+
+```{r fig.width=7, fig.height=5}
+basedat <- readRDS("./RData/Exp_CoCulture_Killrate.rds")
+basedat$CellLine <- factor(basedat$CellLine, levels = names(CLinecol))
+ggbarplot(basedat,
+            x = "Tcell", y = "MeanRate", add = "mean_se",
+          fill = "CellLine", 
+          position = position_dodge(0.7), alpha = 1, width = 0.5) +
+  xlab("") + scale_fill_manual(values = CLinecol) + ylab("Killing Rate (%)") 
+```
+
+```{r}
+# calculate p-vale: B-CPAP vs TPC-1
+basedat$group2 <- ifelse(basedat$CellLine %in% c("TPC-1", "B-CPAP"),
+                         "group1", "group2")
+
+t.test(MeanRate~CellLine, subset = Tcell == "NT" & 
+         CellLine %in% c("TPC-1", "B-CPAP"),
+       data = basedat)
+t.test(MeanRate~CellLine, subset = Tcell == "TT" & 
+         CellLine %in% c("TPC-1", "B-CPAP"),
+       data = basedat)
+# calculate p-vale: B-CPAP vs TPC-1
+t.test(MeanRate~group2, subset = Tcell == "NT", data = basedat)
+t.test(MeanRate~group2, subset = Tcell == "TT", data = basedat)
+```
+
+### Fig.4G
+
+```{r}
+G4dat <- readRDS("./RData/Exp_CoCulture_ko.rds")
+usecol <- colnames(G4dat)[2:ncol(G4dat)]
+G4dat <- pivot_longer(G4dat, 
+                      cols = all_of(usecol),
+                      names_to = "Group", values_to = "lysis")
+G4dat$Treatment <- str_split(G4dat$Group, "_") %>% 
+  sapply(., "[[", 3)
+G4dat$SampleGroup <- str_remove(G4dat$Group, "_[A-Za-z]+$")
+# cell-line order
+group_order <- c("TT_TPC1", "NT_TPC1", "TT_BCPAP", "NT_BCPAP")
+treat_order <- c("TG", "TPO", "control")
+G4dat$SampleGroup <- factor(G4dat$SampleGroup, levels = group_order)
+G4dat$Treatment <- factor(G4dat$Treatment, levels = treat_order)
+treatcol <- c("#33A02C", "#FF7F00", "#1F78B4")
+names(treatcol) <- c("TG", "TPO", "control")
+```
+
+
+
+```{r fig.width=5, fig.height=4}
+ggbarplot(G4dat,
+            x = "SampleGroup", y = "lysis", add = "mean_se",
+          fill = "Treatment", 
+          position = position_dodge(0.7), alpha = 1, width = 0.5) +
+  xlab("") + ylab("Killing Rate (%)") +
+  scale_fill_manual(values = treatcol) 
+```
+
+```{r}
+G4dat.list <- split(G4dat, G4dat$SampleGroup)
+G4dat.list$TT_TPC1
+G4dat.list <- lapply(G4dat.list, function(z){
+  dat <- pivot_wider(z, 
+                     id_cols = ID, names_from = Treatment, 
+                     values_from = lysis)
+  TG_TPO <- t.test(dat$TG, dat$TPO, paired = TRUE)$p.value
+  TG_control <- t.test(dat$TG, dat$control, paired = TRUE)$p.value
+  TPO_control <- t.test(dat$TPO, dat$control, paired = TRUE)$p.value
+  data.frame(Group = c("TG_TPO", "TG_control", "TPO_control"),
+             Pvalue = c(TG_TPO, TG_control, TPO_control))
+})
+G4pvalue <- plyr::ldply(G4dat.list, .fun = "rbind")
+G4pvalue$Pvalue <- round(G4pvalue$Pvalue, 3)
+G4pvalue
+```
+
+### Fig.4H
+
+```{r}
+H4dat <- readRDS("./RData/Exp_CoCulture_AIT.rds")
+pdat <- H4dat %>% pivot_longer(
+  cols = all_of(c("TT_TPC1", "TN_TPC1")), 
+  names_to = "Group", values_to = "Rate")
+pdat$Pathology_AIT <- plyr::mapvalues(pdat$Pathology_AIT, 
+                                      from = c(0, 1),
+                                      to = c("AIT_No", "AIT_Yes"))
+pdat$newgroup <- paste0(pdat$Group, "_", pdat$Pathology_AIT)
+pdat$newgroup <- factor(pdat$newgroup, levels = c("TT_TPC1_AIT_Yes", 
+                                                  "TT_TPC1_AIT_No",
+                                                  "TN_TPC1_AIT_Yes",
+                                                  "TN_TPC1_AIT_No"))
+newGcol <- c("#E31A1C", "#FB9A99", "#1F78B4", "#A6CEE3")
+names(newGcol) <- c("TT_TPC1_AIT_Yes", "TT_TPC1_AIT_No", 
+                    "TN_TPC1_AIT_Yes","TN_TPC1_AIT_No")
+table(pdat$Pathology_AIT)
+pdat %>% 
+  ggboxplot(.,
+           x = "newgroup",
+           y = "Rate",
+           fill = "newgroup", 
+           ylab = "rate", width = 0.4) +
+  scale_fill_manual(values = newGcol) + 
+  stat_compare_means(comparisons = list(c("TT_TPC1_AIT_Yes", "TT_TPC1_AIT_No"),
+                                        c("TN_TPC1_AIT_Yes", "TN_TPC1_AIT_No")),
+                     method = "t.test") +
+  
+  NoLegend() + xlab("") + ylab("Killing Rate (%)")
+```
+
+
+### Fig.6E
+
+```{r fig.width=4, fig.height=3}
+cxcl9_ihc <- dplyr::select(IHCdat, PID, AIT, IFNG_invasive, CXCL9_invasive)
+cxcl9_ihc <- cxcl9_ihc %>%
+  dplyr::filter(!(is.na(IFNG_invasive) & is.na(CXCL9_invasive)))
+ggscatter(cxcl9_ihc, x = "CXCL9_invasive", y = "IFNG_invasive", 
+          color = "AIT", size = 3) +
+  scale_color_manual(values = AIT_col) +
+  stat_cor(method = "pearson") + 
+  xlab("CXCL9 H-score in Tumor Invasion Margin") +
+  ylab("Density of IFN-γ+ Cells in \nTumor Invasion Margin")
+```
+
+### Fig.6I
+
+```{r fig.width=3, fig.height=3}
+dat <- openxlsx::read.xlsx("./RData/Exp_CXCL9ELISA.xlsx", sheet = 2)
+dat$INFG <- paste0("D", dat$INFG)
+colnames(dat)[1] <- "IFNG"
+tmpcol <- IFNGcol
+names(tmpcol)[2] <- "D20"
+ggbarplot(dat, x = "IFNG", y = "CXCL9", add = "mean_se",
+          width = 0.5,
+          position = position_dodge(0.8), alpha = 0.5, fill = "IFNG") +
+  scale_fill_manual(values = tmpcol) + 
+  xlab("") + theme(legend.position = "none") +
+  ylab("ELISA: CXCL9 ng/mL") +
+  stat_compare_means(aes(label = paste0("p = ", after_stat(p.format))),
+    comparisons = list(c("D100", "D20"), c("D20", "D0")),
+                     method = "t.test")
+```
+
+### Fig.6J
+
+```{r fig.width=5, fig.height=5}
+chemodat <- openxlsx::read.xlsx("./RData/Exp_chemotatic.xlsx", sheet = 2)
+usecol <-  colnames(chemodat)[-1]
+chemodat <- pivot_longer(chemodat, cols = all_of(usecol),
+                         names_to = "Tcell", values_to =  "rate") %>% as.data.frame()
+
+my_comparisons <- list(c("FBS_CXCL9", "FBS"), 
+                       c("FBS_M1_20", "FBS_CXCL9"),
+                        c("FBS_M1_100", "FBS_CXCL9"),
+                       c("FBS_M1_100_CXCL9Ab", "FBS_CXCL9"), c("FBS_M1_100_CXCR3Ab","FBS_CXCL9"),
+                      c("FBS_M1_100", "FBS_M1_100_CXCL9Ab"),
+                      c("FBS_M1_100_CXCL9Ab", "FBS_M1_100_CXCR3Ab")
+                       )
+mycols <-  brewer.pal(12, "Paired")
+plist <- list()
+for (z in c("TT", "NT")){
+    plist[[z]] <- ggbarplot(chemodat[chemodat$Tcell == z , ], 
+          x = "Group", y = "rate", add = "mean_se",
+          fill = "Group", 
+          position = position_dodge(0.8), alpha = 0.5, width = 0.5) +
+      scale_fill_manual(values = mycols) + 
+  ggtitle(z) +
+      RotatedAxis() + 
+      xlab("") +
+  theme(legend.position = "none") + ylab("Migration Rate%") + 
+  stat_compare_means(comparisons = my_comparisons, 
+                     method = "t.test",
+                     label.y.npc = 0.8)
+}
+plist$TT
+```
+
+### Fig.S5G
+
+```{r}
+plist$NT
+```
+
+### Fig.S5H
+
+```{r fig.width=5, fig.height=5}
+ggbarplot(chemodat, x = "Group", y = "rate", add = "mean_se",
+          fill = "Tcell", 
+          position = position_dodge(0.8), alpha = 0.5, width = 0.5) +
+  RotatedAxis() + 
+  xlab("") + ylab("Migration rate %") +
+  scale_fill_manual(values = NTcol) + 
+  stat_compare_means(aes(group = Tcell), method = "t.test") 
+```
+
+
+```{r}
+sessionInfo()
+```
