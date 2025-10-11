@@ -1,0 +1,298 @@
+---
+title: "FigureS1"
+author: "SRF"
+date: "2025-10-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+```
+
+
+```{r}
+library(ggpubr)
+library(reshape2)
+library(data.table)
+library(cowplot)
+library(ggthemes)
+library(ggsci)
+library(tidyverse)
+library(SCP)
+library(Startrac)
+library(Seurat)
+library(superheat)
+library(ggsci)
+library(RColorBrewer)
+library(pheatmap)
+library(miloR)
+library(limma)
+library(edgeR)
+theme_set(theme_cowplot())
+```
+
+## setting
+
+```{r}
+source("./00_ColorSetting.R")
+source("./00_CalculatePro.R")
+source("./00_Function.R")
+```
+
+## data.loading
+
+```{r}
+seur <- readRDS("./RData/seur.rds")
+sce_inf <- readRDS("./RData/01_sce_inf.rds")
+```
+
+
+### Fig.S1A
+
+```{r}
+options(repr.plot.width = 10, repr.plot.height = 6)
+genes <- c("CD3D", "CD4", "CD8A", "TYROBP", "KLRF1",
+           "MS4A1", "SDC1", "CD68", "HLA-DRA", "EPCAM",
+          "TPO", "TG", "COL3A1", "ENG", "PECAM1")
+suppressMessages({
+p_list <- list()
+for(gene in genes){
+  p_list[[gene]] <- FeaturePlot(seur, gene, pt.size = 1) +
+    theme(plot.title = element_text(size = 18),
+           axis.text = element_blank(), 
+           axis.title = element_blank(), 
+           axis.line = element_blank(), 
+           axis.ticks = element_blank()) +
+    NoLegend()
+}
+
+p = ggarrange(plotlist = p_list, ncol = 5, nrow = 3)
+annotate_figure(p, top = text_grob("Fig.S1A markers", 
+               color = "black", face = "bold", size = 20))
+    })
+```
+
+### Fig.S1B
+
+```{r fig.width=6, fig.height=2}
+QCmetric <- readRDS("./RData/01_QCsigDat.rds")
+QCmetric <- merge(QCmetric, sce_inf[, c("cell_lineages", "AIT")], by.x = 0, by.y = 0)
+fea <- c("ImmuneEstimate", "StromalEstimate", "TDS", "sample_cnv")
+pics <- lapply(fea, function(z){
+  ggboxplot(QCmetric, x = "cell_lineages", y = z, 
+            fill = "cell_lineages", width = 0.4, add = "none",
+            outlier.shape = NA) + 
+     coord_flip() +
+    ggtitle(z) + xlab("") + ylab("") +
+    scale_fill_manual(values = cell_lineages_colors) + 
+    NoLegend()
+})
+plot_grid(plotlist = pics[c(1,2)], nrow = 1)
+```
+
+### Fig.S1C
+
+```{r fig.width=6, fig.height=2}
+plot_grid(plotlist = pics[c(3,4)], nrow = 1)
+```
+
+### Fig.S1D
+
+```{r fig.width=12, fig.height=3}
+fea <- c("nCount_RNA", "nFeature_RNA", "subsets_Mt_percent", "subsets_Ri_percent")
+pics <- lapply(fea, function(z){
+  ggboxplot(seur@meta.data, x = "cell_lineages", y = z, 
+            fill = "cell_lineages", width = 0.4, add = "none",
+            outlier.shape = NA) + 
+     coord_flip() +
+    ggtitle(z) + xlab("") + ylab("") +
+    scale_fill_manual(values = cell_lineages_colors) + 
+    NoLegend()
+})
+plot_grid(plotlist = pics, nrow = 1)
+```
+
+### Fig.S1E
+
+```{r fig.width=20, fig.height=8}
+seur@reductions$umap@cell.embeddings <- as.matrix(sce_inf[, c("UMAP1_cl", "UMAP2_cl")])
+colnames(seur@reductions$umap@cell.embeddings) <- c("UMAP_1", "UMAP_2")
+Idents(seur) <- sce_inf$cell_lineages
+options(repr.plot.width = 20, repr.plot.height = 8)
+CellDimPlot(seur, group.by = "clusters_anno", 
+            split.by = "cell_lineages",
+            theme_use = "theme_blank",
+            palette = "Set2",
+           bg_color = NA, nrow = 2)
+```
+
+### Fig.s1F
+
+```{r fig.width=7, fig.height=3}
+(load("./RData/01_tumor_milOR.RData"))
+tumor_da$cell_lineages <- factor(tumor_da$cell_lineages, 
+                                 levels = rev(names(cell_lineages_colors)))
+
+tumor_sig_da <- tumor_da[tumor_da$FDR < 0.05, ]
+p.sig <- plotNhoodGraphDA(PTCmilo, tumor_sig_da, alpha = 0.1)
+p.sig <- p.sig + scale_fill_gradient2(
+  low = "#1F78B4",      
+  mid = "white",
+  high =   "#E31A1C",  
+  midpoint = 0,
+  name = "logFC"
+) +  theme(legend.position = "bottom")
+
+p1 <- plotDAbeeswarm(tumor_da, group.by = "cell_lineages", alpha = 0.3)
+p1 <- p1 + scale_color_gradient2(
+  low = "#1F78B4",      
+  high =   "#E31A1C",  
+  midpoint = 0,
+  name = "logFC"
+)
+
+plot_grid(p.sig, p1, nrow = 1)
+```
+
+
+
+
+
+```{r fig.width=7, fig.height=3}
+(load("./RData/01_NAT_milOR.RData"))
+nat_da_sig <- nat_da[nat_da$FDR < 0.05, ]
+p2.sig <- plotNhoodGraphDA(NATmilo, nat_da_sig, alpha = 0.3)
+p2.sig <- p2.sig + scale_fill_gradient2(
+  low = "#1F78B4",      
+  mid = "white",
+  high =   "#E31A1C",  
+  midpoint = 0,
+  name = "logFC"
+) + theme(legend.position = "bottom")
+
+nat_da$cell_lineages <- factor(nat_da$cell_lineages, 
+                                 levels = rev(names(cell_lineages_colors)))
+p2 <- plotDAbeeswarm(nat_da, group.by = "cell_lineages", alpha = 0.3)
+p2 <- p2 + scale_color_gradient2(
+  low = "#1F78B4",      
+  high =   "#E31A1C",  
+  midpoint = 0,
+  name = "logFC"
+)
+plot_grid(p2.sig, p2, nrow = 1, rel_widths = c(2, 3))
+```
+
+
+### Fig.S1G
+
+
+```{r}
+tme_inf <- subset(sce_inf, !(cell_lineages %in% c("Epithelial.cells")))
+heatorder <- readRDS("./RData/01_heatmapOrder.rds")
+cell_anno <- readRDS("./RData/01_cell_anno.rds")
+```
+
+
+```{r fig.width=8, fig.height=10}
+pdat <- CalculatePro(meta = tme_inf, ID = "sampleType_AIT" ,
+                     Cluster = "clusters_anno", usecol = c("sampleType", "AIT"))
+pdat <- pdat %>% as.data.frame() %>%
+  mutate(percent = ifelse(AIT == "Yes", -percent, percent))
+
+maxV <- ceiling(max(abs(pdat$percent))); maxV
+pdat %>% 
+  ggplot(aes(x = clusters_anno, y = percent, fill = sampleType_AIT)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  scale_y_continuous(
+    labels = abs,
+    breaks = seq(-18, 18, by = 4),
+    limits = c(-18, 18)
+  ) +
+  facet_grid(~sampleType) + 
+  scale_x_discrete(limits = rev(heatorder)) + 
+   scale_fill_manual(values = sampleType_AIT_col) +
+  labs(y = "", x = "", fill = "Group") 
+```
+
+### Fig.S1H
+
+```{r fig.width=6, fig.height=2.5}
+tme_inf$celltype <- plyr::mapvalues(tme_inf$clusters_anno, 
+                                    from = cell_anno$clusters_anno, 
+                                    to = cell_anno$type)
+Typepdat <- CalculatePro(meta = tme_inf,
+                         ID = "SID",
+                         Cluster = "celltype", 
+                         usecol = c("sampleType", "AIT", "sampleType_AIT"))
+Typepdat$celltype <- factor(Typepdat$celltype, 
+                           levels = c("Tumor-related",
+                                      "Thyroid-related","AIT-related"))
+Typepdat %>%
+  ggplot(aes(x = sampleType_AIT , y = percent, 
+             fill = sampleType_AIT)) +
+  geom_boxplot(width = 0.6) +
+  scale_fill_manual(values = sampleType_AIT_col) +
+  facet_grid(~celltype) + 
+  xlab("") + ylab("") +
+   RotatedAxis() + theme(legend.position = "")
+```
+
+### Fig.S1I
+
+```{r fig.width=6, fig.height=3}
+tme_inf$sampleType_AIT <- factor(tme_inf$sampleType_AIT, 
+                                 levels = c("AIT-PTC", "AIT-NAT", "AIT+NAT", "AIT+PTC"))
+tme_inf %>%
+  ggplot(aes(x = SID , fill = celltype)) +
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()) + 
+  scale_fill_manual(values = celltype_col) +
+  facet_grid(~sampleType_AIT,scales = "free_x", space = "free_x") + 
+  xlab("") + ylab("") 
+```
+
+
+### Fig.S1J
+
+```{r fig.width=5, fig.height=12}
+tmeMeta <- sce_inf %>% 
+  dplyr::filter(cell_lineages != "Epithelial.cells")
+dat <- tmeMeta %>% 
+  dplyr::select(cell_names, clusters_anno, SID, sampleType_AIT, PID)
+colnames(dat) <- c("CellBarcode", "majorCluster", "SampleID",
+                     "loc", "patient")
+dat$majorCluster <- as.character(dat$majorCluster)
+distHeat <- calTissueDist(dat.tb = dat, byPatient = F, 
+                colname.cluster = "majorCluster", 
+                colname.patient = "patient",
+                colname.tissue = "loc")
+
+oedat <- as.matrix(distHeat)
+bk <- c(seq(0, 1, by=0.01),seq(1.01,1.99,by=0.01))
+sp_order <- c("AIT+PTC", "AIT+NAT", "AIT-NAT", "AIT-PTC")
+oedat[heatorder, sp_order] %>%
+  pheatmap::pheatmap(cluster_rows = FALSE,
+                     cluster_cols = FALSE,
+                     scale = "none",
+                     color = c(colorRampPalette(colors = c(sampleType_colors[1],"white"))(length(bk)/2),
+                               colorRampPalette(colors = c("white",sampleType_colors[2]))(length(bk)/2)),                     
+                     breaks = bk,
+                     border_color = NA, 
+                     display_numbers = T,
+                     annotation_legend = FALSE,
+                    gaps_row = which(heatorder %in% c("Th17_CCR6", "CD4T_GZMK", "DC_CREM")),
+                     number_color = "grey20", 
+                     fontsize_number = 10,
+                   )
+```
+
+
+```{r}
+sessionInfo()
+```
+
+
