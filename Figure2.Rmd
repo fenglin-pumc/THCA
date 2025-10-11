@@ -1,7 +1,7 @@
 ---
-title: "Figure2"
+title: "Figure 2"
 author: "SRF"
-date: "2024-12-21"
+date: "2025-10-06"
 output: html_document
 ---
 
@@ -10,6 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_chunk$set(message = FALSE)
 knitr::opts_chunk$set(warning = FALSE)
 ```
+
 
 
 ```{r}
@@ -40,6 +41,7 @@ source("./00_ColorSetting.R")
 source("./00_Function.R")
 ```
 
+
 ## data.loading
 
 ```{r}
@@ -50,7 +52,6 @@ colnames(seur@reductions$umap@cell.embeddings) <- c("UMAP_1", "UMAP_2")
 Idents(seur) <- sce_inf$cell_lineages
 ```
 
-## Figure2
 
 ### Fig.2A
 
@@ -112,13 +113,13 @@ plot_cell_trajectory(monocle_cds, color_by = "AIT", cell_size = 0.1) +
 ```{r}
 options(repr.plot.width = 10, repr.plot.height = 10)
 difs <- readRDS("./RData/02_AITepidif.rds")
-difs$dotsize <- 0
+difs$logFC <- 0
 aa <- difs$tum_logFC > 0 & difs$tfc_logFC > 0
-difs$dotsize[aa] <- (difs$tum_logFC[aa] + difs$tfc_logFC[aa])/2
+difs$logFC[aa] <- (difs$tum_logFC[aa] + difs$tfc_logFC[aa])/2
 bb <- difs$tum_logFC < 0 & difs$tfc_logFC < 0
-difs$dotsize[bb] <- (difs$tum_logFC[bb] + difs$tfc_logFC[bb])/2
+difs$logFC[bb] <- (difs$tum_logFC[bb] + difs$tfc_logFC[bb])/2
 ggplot(difs, aes(x = tum_logFC, y = tfc_logFC)) +
-  geom_point(aes(size = PCT, fill = dotsize), 
+  geom_point(aes(size = PCT, fill = logFC), 
              color = "black", shape = 21) +
   scale_size_continuous(range = c(0.5, 2)) +
   scale_fill_gradientn(colors = c(sampleType_AIT_col[c(2)], "grey", sampleType_AIT_col[c(3,4)]))+
@@ -127,223 +128,75 @@ geom_hline(yintercept = 0, linetype = "dashed") +
 geom_vline(xintercept = 0, linetype = "dashed")
 ```
 
-### Fig.2G
+
+
+
+### Fig.2G-2H:Experimemt
+
+### Fig.2I-2J
 
 ```{r}
-# GSEA-analysis
 tum_dif <- readRDS("./RData/02_tumAITdif.rds")
 tfc_dif <- readRDS("./RData/02_tfcAITdif.rds")
 TERM2GENE <- readRDS("./RData/02_IFNG_AMP_TERM2GENE.rds")
-# tumor
-gseares.t <- My_GSEA2(dat = data.frame(Gene = rownames(tum_dif),
-                                     fc = tum_dif$avg_log2FC),
-                    gmt = TERM2GENE,
-                    des = F, pvalueCutoff = 0.05)
-# tfc
-gseares.n <- My_GSEA2(dat = data.frame(Gene = rownames(tfc_dif),
-                                     fc = tfc_dif$avg_log2FC),
-                    gmt = TERM2GENE,
-                    des = F, pvalueCutoff = 0.05)
-
+hallmark <- read.gmt("./RData/02_h.all.v7.1.symbols.gmt")
+colnames(hallmark) <- colnames(TERM2GENE)
+TERM2GENE <- rbind(TERM2GENE, hallmark)
+# # tumor
+# gseares.t <- My_GSEA2(dat = data.frame(Gene = rownames(tum_dif),
+#                                      fc = tum_dif$avg_log2FC),
+#                     gmt = TERM2GENE,
+#                     des = F, pvalueCutoff = 0.05)
+# # tfc
+# gseares.n <- My_GSEA2(dat = data.frame(Gene = rownames(tfc_dif),
+#                                      fc = tfc_dif$avg_log2FC),
+#                     gmt = TERM2GENE,
+#                     des = F, pvalueCutoff = 0.05)
+# saveRDS(gseares.t, file = "./RData/02_sc_ptc_gsea_res.rds")
+# saveRDS(gseares.n, file = "./RData/02_sc_tfc_gsea_res.rds")
 ```
 
-### Fig.2G
+### Fig.2I
 
-```{r}
-# Fig.2G-tumor
+```{r fig.width=4, fig.height=3}
+gseares.t <- readRDS("./RData/02_sc_ptc_gsea_res.rds")
+gseares.n <- readRDS("./RData/02_sc_tfc_gsea_res.rds")
 apmID <- which(gseares.t@result$ID == "APM")
 IFNGID <- which(gseares.t@result$ID == "IFNG.GS")
-
 enrichplot::gseaplot2(gseares.t, geneSetID = IFNGID, 
                       subplots = 1:2,
                       pvalue_table = TRUE,
-                       color = sampleType_colors[2], 
+                       color = unname(sampleType_colors[2]), 
                       title = "IFNG hallmark gene set")
-
 enrichplot::gseaplot2(gseares.t, geneSetID = apmID, 
                       subplots = 1:2,
                       pvalue_table = TRUE,
-                       color = sampleType_colors[2], 
+                       color = unname(sampleType_colors[2]), 
                       title = "Antigen processing and presentation")
 ```
 
-### Fig.2H
+### Fig.2J
 
-```{r}
-# Fig.2H-TFC
+```{r fig.width=4, fig.height=3}
 apmID <- which(gseares.n@result$ID == "APM")
 IFNGID <- which(gseares.n@result$ID == "IFNG.GS")
 enrichplot::gseaplot2(gseares.n, geneSetID = IFNGID, 
                       subplots = 1:2,
                       pvalue_table = TRUE,
-                       color = sampleType_colors[2], 
+                       color = unname(sampleType_colors[1]), 
                       title = "IFNG hallmark gene set")
-
 enrichplot::gseaplot2(gseares.n, geneSetID = apmID, 
                       subplots = 1:2,
                       pvalue_table = TRUE,
-                       color = sampleType_colors[2], 
+                       color = unname(sampleType_colors[1]), 
                       title = "Antigen processing and presentation")
 ```
 
 
-```{r}
-#Fig.2J 2K-Experimemt
-```
 
-
-## FigureS3
-
-### Fig.S3A
-
-```{r}
-# scRNA-seq difgene
-AITdif.n <- tfc_dif %>% 
-  dplyr::filter(p_val_adj < 0.05 & avg_log2FC > 1) %>% rownames()
-AITdif.t <- tum_dif %>% 
-  dplyr::filter(p_val_adj < 0.05 & avg_log2FC > 1) %>% rownames()
-plot.n <- intersect(AITdif.n, AITdif.t) %>% unique()
-# scRNA-seq-Pseduo-bulk-tumor
-epiBulk <- read.table("./RData/02_epi_bulk.txt", header = T,
-                      sep = "\t")
-boxplot(epiBulk[, 1:6]) # log2 already
-tumordat <- epiBulk[, str_detect(colnames(epiBulk), "_T_")] 
-colnames(tumordat) <- str_remove(colnames(tumordat), "_T_GEX")
-normaldat <- epiBulk[, str_detect(colnames(epiBulk), "_N_")] 
-colnames(normaldat) <- str_remove(colnames(normaldat), "_N_GEX")
-clindat <- readRDS("./RData/02_clin.rds")
-anno <- clindat[, c("AIT", "BRAFV600E")] 
-colnames(anno)[2] <- "BRAF"
-anno <- arrange(anno, AIT)
-```
-
-### Fig.S3A
-
-```{r}
-pheatmap(tumordat[intersect(rownames(tumordat),plot.n), rownames(anno)], 
-         scale = "row", 
-         cluster_rows = T,
-         cluster_cols = F, 
-         show_rownames = T, 
-         show_colnames = T,
-         clustering_method = "ward.D2",
-         color = colorRampPalette(c(sampleType_colors[1], "white", sampleType_colors[2]))(100),
-         breaks = seq(-2, 2, length.out = 100),
-         border_color = "black",
-         annotation_col = anno,
-         width = 7, height = 5,
-         main = "AIT's DEGs in Tumor Sample of scRNA-seq Cohort",
-         annotation_colors = list(BRAF = BRAF_col,
-                                  AIT = AIT_col))
-```
-
-### Fig.S3B
-
-```{r}
-pheatmap(normaldat[intersect(rownames(normaldat),plot.n), rownames(anno)], 
-         scale = "row", 
-         cluster_rows = T,
-         cluster_cols = F, 
-         show_rownames = T, 
-         show_colnames = T,
-         clustering_method = "ward.D2",
-         color = colorRampPalette(c(sampleType_colors[1], "white", sampleType_colors[2]))(100),
-         breaks = seq(-2, 2, length.out = 100),
-         border_color = "black",
-         annotation_col = anno,
-         width = 7, height = 5,
-         main = "AIT's DEGs in NATs of scRNA-seq Cohort",
-         annotation_colors = list(BRAF = BRAF_col,
-                                  AIT = AIT_col))
-```
-
-### Fig.S3C
-
-```{r}
-# TCGA-THCA
-thcadat <- readRDS("./RData/02_thcaTumordat.rds") 
-# withAIT
-tcgaclin <- data.table::fread("./RData/02_TCGA_AIT_clin.csv")
-tcgaclin$sample <- str_replace_all(tcgaclin$sample, "-", ".")
-comS <- intersect(tcgaclin$sample, colnames(thcadat))
-length(comS); nrow(tcgaclin)
-tcgaclin <- tcgaclin[match(comS,tcgaclin$sample), ]
-tcgaclin <- arrange(tcgaclin, AIT)
-thcadat <- thcadat[, tcgaclin$sample]
-pdata <- tcgaclin[, c("sample", "AIT", "BRAF")]
-pdata$BRAF <- plyr::mapvalues(pdata$BRAF, from = c(0, 1),
-                              to = c("WT", "Mut"))
-identical(colnames(thcadat), pdata$sample)
-pdata <- column_to_rownames(pdata, var = "sample")
-# Fig.3C
-dist_matrix <- dist(t(thcadat[plot.n, ])) # 计算距离矩阵
-hc <- hclust(dist_matrix, method = "ward.D2")
-clusters <- cutree(hc, k = 3)
-clusters <- data.frame(row.names = names(clusters),
-                       cluster = clusters)
-clusters <- merge(clusters, pdata, by.x = 0, by.y = 0) %>%
-  column_to_rownames(var = "Row.names") %>% arrange(AIT, cluster)
-pheatmap(thcadat[plot.n, rownames(clusters)],
-         scale = "row", cluster_rows = T,
-         cluster_cols = F, 
-         show_rownames = T, 
-         show_colnames = F,
-         clustering_method = "ward.D2",
-         color = colorRampPalette(c(sampleType_colors[1], "white", sampleType_colors[2]))(100),
-         breaks = seq(-2, 2, length.out = 100),
-         border_color = "black",
-         annotation_col = pdata,
-         width = 7, height = 5,
-         main = "AIT's DEGs in TCGA-THCA",
-         annotation_colors = list(BRAF = BRAF_col,
-                                  AIT = AIT_col))
-```
-
-### Fig.S3D
-
-```{r}
-## DEG analysis
-# y <- DGEList(thcadat, samples= pdata)
-# y <- calcNormFactors(y)
-# design <- model.matrix(~factor(AIT), y$samples)
-# y <- estimateDisp(y, design)
-# fit <- glmQLFit(y, design, robust=TRUE)
-# res <- glmQLFTest(fit, coef=ncol(design))
-# difDEGs = topTags(res, n = nrow(res$table))$table
-# AITDEGs.TGCA <- difDEGs
-# saveRDS(AITDEGs.TGCA, file = "./RData/02_AITDEGs_TCGA.rds")
-```
-
-
-
-```{r}
-AITDEGs.TGCA <- readRDS("./RData/02_AITDEGs_TCGA.rds")
-gseares.tcga <- My_GSEA2(dat = data.frame(
-  Gene = rownames(AITDEGs.TGCA),
-  fc = AITDEGs.TGCA$logFC),
-                    gmt = TERM2GENE,
-                    des = F, pvalueCutoff = 0.05)
-
-
-# Fig.S3D
-apmID <- which(gseares.tcga@result$ID == "APM")
-IFNGID <- which(gseares.tcga@result$ID == "IFNG.GS")
-enrichplot::gseaplot2(gseares.tcga, geneSetID = IFNGID, 
-                      subplots = 1:2,
-                      pvalue_table = TRUE,
-                       color = sampleType_colors[2], 
-                      title = "IFNG Hallmark")
-
-enrichplot::gseaplot2(gseares.tcga, geneSetID = apmID, 
-                      subplots = 1:2,
-                      pvalue_table = TRUE,
-                       color = sampleType_colors[2], 
-                      title = "Antigen processing and presentation")
-```
-
+### Fig.2k-2M:Experimemt
 
 
 ```{r}
 sessionInfo()
 ```
-
