@@ -1,0 +1,196 @@
+---
+title: "FigureS2"
+author: "SRF"
+date: "2025-10-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+```
+
+
+```{r}
+library(tidyverse)
+library(data.table)
+library(pheatmap)
+library(cowplot)
+library(Seurat)
+library(clusterProfiler)
+theme_set(theme_cowplot())
+```
+
+## setting
+
+```{r}
+source("./00_ColorSetting.R")
+source("./00_Function.R")
+```
+
+
+## data.loading
+
+
+```{r}
+tum_dif <- readRDS("./RData/02_tumAITdif.rds")
+tfc_dif <- readRDS("./RData/02_tfcAITdif.rds")
+```
+
+
+### Fig.S3A
+
+```{r}
+# scRNA-seq difgene
+AITdif.n <- tfc_dif %>% 
+  dplyr::filter(p_val_adj < 0.05 & avg_log2FC > 1) %>% rownames()
+AITdif.t <- tum_dif %>% 
+  dplyr::filter(p_val_adj < 0.05 & avg_log2FC > 1) %>% rownames()
+plot.n <- intersect(AITdif.n, AITdif.t) %>% unique()
+# scRNA-seq-Pseduo-bulk-tumor
+epiBulk <- read.table("./RData/02_epi_bulk.txt", header = T,
+                      sep = "\t")
+# boxplot(epiBulk[, 1:6]) # log2 already
+tumordat <- epiBulk[, str_detect(colnames(epiBulk), "_T_")] 
+colnames(tumordat) <- str_remove(colnames(tumordat), "_T_GEX")
+normaldat <- epiBulk[, str_detect(colnames(epiBulk), "_N_")] 
+colnames(normaldat) <- str_remove(colnames(normaldat), "_N_GEX")
+clindat <- readRDS("./RData/02_clin.rds")
+anno <- clindat[, c("AIT", "BRAFV600E")] 
+colnames(anno)[2] <- "BRAF"
+anno <- arrange(anno, AIT)
+```
+
+### Fig.S2A
+
+```{r}
+pheatmap(tumordat[intersect(rownames(tumordat),plot.n), rownames(anno)], 
+         scale = "row", 
+         cluster_rows = T,
+         cluster_cols = F, 
+         show_rownames = T, 
+         show_colnames = T,
+         clustering_method = "ward.D2",
+         color = colorRampPalette(c(sampleType_colors[1], "white", sampleType_colors[2]))(100),
+         breaks = seq(-2, 2, length.out = 100),
+         border_color = "black",
+         annotation_col = anno,
+         width = 7, height = 5,
+         main = "AIT's DEGs in Tumor Sample of scRNA-seq Cohort",
+         annotation_colors = list(BRAF = BRAF_col,
+                                  AIT = AIT_col))
+```
+
+### Fig.S2B
+
+```{r}
+pheatmap(normaldat[intersect(rownames(normaldat),plot.n), rownames(anno)], 
+         scale = "row", 
+         cluster_rows = T,
+         cluster_cols = F, 
+         show_rownames = T, 
+         show_colnames = T,
+         clustering_method = "ward.D2",
+         color = colorRampPalette(c(sampleType_colors[1], "white", sampleType_colors[2]))(100),
+         breaks = seq(-2, 2, length.out = 100),
+         border_color = "black",
+         annotation_col = anno[, "AIT", drop = FALSE],
+         width = 7, height = 5,
+         main = "AIT's DEGs in NATs of scRNA-seq Cohort",
+         annotation_colors = list(AIT = AIT_col))
+```
+
+### Fig.S2C
+
+```{r}
+# TCGA-THCA
+thcadat <- readRDS("./RData/02_thcaTumordat.rds") 
+# withAIT
+tcgaclin <- data.table::fread("./RData/02_TCGA_AIT_clin.csv")
+tcgaclin$sample <- str_replace_all(tcgaclin$sample, "-", ".")
+comS <- intersect(tcgaclin$sample, colnames(thcadat))
+length(comS); nrow(tcgaclin)
+tcgaclin <- tcgaclin[match(comS,tcgaclin$sample), ]
+tcgaclin <- arrange(tcgaclin, AIT)
+thcadat <- thcadat[, tcgaclin$sample]
+pdata <- tcgaclin[, c("sample", "AIT", "BRAF")]
+pdata$BRAF <- plyr::mapvalues(pdata$BRAF, from = c(0, 1),
+                              to = c("WT", "Mut"))
+identical(colnames(thcadat), pdata$sample)
+pdata <- column_to_rownames(pdata, var = "sample")
+# Fig.3C
+dist_matrix <- dist(t(thcadat[plot.n, ])) # 计算距离矩阵
+hc <- hclust(dist_matrix, method = "ward.D2")
+clusters <- cutree(hc, k = 3)
+clusters <- data.frame(row.names = names(clusters),
+                       cluster = clusters)
+clusters <- merge(clusters, pdata, by.x = 0, by.y = 0) %>%
+  column_to_rownames(var = "Row.names") %>% arrange(AIT, cluster)
+pheatmap(thcadat[plot.n, rownames(clusters)],
+         scale = "row", cluster_rows = T,
+         cluster_cols = F, 
+         show_rownames = T, 
+         show_colnames = F,
+         clustering_method = "ward.D2",
+         color = colorRampPalette(c(sampleType_colors[1], "white", sampleType_colors[2]))(100),
+         breaks = seq(-2, 2, length.out = 100),
+         border_color = "black",
+         annotation_col = pdata,
+         width = 7, height = 5,
+         main = "AIT's DEGs in TCGA-THCA",
+         annotation_colors = list(BRAF = BRAF_col,
+                                  AIT = AIT_col))
+```
+
+### Fig.S2D
+
+```{r}
+## DEG analysis
+# y <- DGEList(thcadat, samples= pdata)
+# y <- calcNormFactors(y)
+# design <- model.matrix(~factor(AIT), y$samples)
+# y <- estimateDisp(y, design)
+# fit <- glmQLFit(y, design, robust=TRUE)
+# res <- glmQLFTest(fit, coef=ncol(design))
+# difDEGs = topTags(res, n = nrow(res$table))$table
+# AITDEGs.TGCA <- difDEGs
+# saveRDS(AITDEGs.TGCA, file = "./RData/02_AITDEGs_TCGA.rds")
+```
+
+
+
+```{r fig.width=4, fig.height=3}
+AITDEGs.TGCA <- readRDS("./RData/02_AITDEGs_TCGA.rds")
+TERM2GENE <- readRDS("./RData/02_IFNG_AMP_TERM2GENE.rds")
+hallmark <- read.gmt("./RData/02_h.all.v7.1.symbols.gmt")
+colnames(hallmark) <- colnames(TERM2GENE)
+TERM2GENE <- rbind(TERM2GENE, hallmark)
+
+# gseares.tcga <- My_GSEA2(dat = data.frame(
+#   Gene = rownames(AITDEGs.TGCA),
+#   fc = AITDEGs.TGCA$logFC),
+#                     gmt = TERM2GENE,
+#                     des = F, pvalueCutoff = 0.05)
+# saveRDS(gseares.tcga, file = "./RData/02_tcga_epi_gsea_res.rds")
+gseares.tcga <- readRDS("./RData/02_tcga_epi_gsea_res.rds")
+apmID <- which(gseares.tcga@result$ID == "APM")
+IFNGID <- which(gseares.tcga@result$ID == "IFNG.GS")
+enrichplot::gseaplot2(gseares.tcga, geneSetID = IFNGID, 
+                      subplots = 1:2,
+                      pvalue_table = TRUE,
+                       color = unname(sampleType_colors[2]), 
+                      title = "IFNG Hallmark")
+enrichplot::gseaplot2(gseares.tcga, geneSetID = apmID, 
+                      subplots = 1:2,
+                      pvalue_table = TRUE,
+                       color = unname(sampleType_colors[2]), 
+                      title = "Antigen processing and presentation")
+```
+
+
+
+```{r}
+sessionInfo()
+```
+

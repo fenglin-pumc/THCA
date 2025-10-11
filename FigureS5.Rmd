@@ -1,0 +1,179 @@
+---
+title: "FigureS5"
+author: "SRF"
+date: "2025-10-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+```
+
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(ggsci)
+library(ggpubr)
+library(cowplot)
+library(Seurat)
+theme_set(theme_cowplot())
+```
+
+
+```{r}
+scList <- readRDS("./RData/06_SClist.rds")
+```
+
+## setting
+
+```{r}
+source("./00_ColorSetting.R")
+```
+
+
+### Fig.S5A
+
+```{r fig.width=5, fig.height=4}
+selG <- c("CXCL9", "IFNG")
+GSE29265dat <- readRDS("./RData/06_GSE29265dat.rds")
+GSE29265dat <- GSE29265dat[selG, ] %>% t() %>% as.data.frame
+GSE29265dat$cohort <- "GSE29265"
+
+GSE33630dat <- readRDS("./RData/06_GSE33630dat.rds")
+GSE33630dat <- GSE33630dat[selG, ] %>% t() %>% as.data.frame
+GSE33630dat$cohort <- "GSE33630"
+
+thcadat <- readRDS("./RData/02_thcaTumordat.rds")
+thcadat <- thcadat[selG, ] %>% t() %>% as.data.frame
+thcadat$cohort <- "TCGA"
+
+plotdat <- rbind(GSE29265dat, GSE33630dat, thcadat)
+ggscatter(plotdat, x = "CXCL9", y = "IFNG",color = "cohort", 
+          add = "reg.line",  
+          conf.int = TRUE,   
+          cor.coef = TRUE,   
+          cor.method = "pearson", 
+          add.params = list(color = "cohort", fill = "lightgray")) + 
+  stat_cor(aes(color = cohort)) + 
+  scale_color_manual(values = unname(CLinecol))
+```
+
+
+### Fig.S5B
+
+```{r}
+# Distance-Calucation
+cell_datalist <- list()
+point_datalist <- list()
+plotdatlist <- readRDS("./RData/06_plotdatlist.rds")
+TLScenter <- readRDS("./RData/06_TLScenter.rds")
+for (z in c("P1", "P2")){
+  plotdat <- plotdatlist[[z]]
+  cell_data <- dplyr::select(plotdat, Spatial_1, Spatial_2)
+  cell_data$Spatial_1 <- -cell_data$Spatial_1
+  colnames(cell_data)[c(1:2)] <- c("y_coord", "x_coord")
+
+point_data <- TLScenter[[z]]
+colnames(point_data)[2:3] <- c("x_point", "y_point")
+distance_matrix <- matrix(NA, nrow = nrow(cell_data), ncol = nrow(point_data))
+# distance
+for (i in 1:nrow(cell_data)) {
+  for (j in 1:nrow(point_data)) {
+    distance_matrix[i, j] <- sqrt((cell_data$x_coord[i] - point_data$x_point[j])^2 +
+                                  (cell_data$y_coord[i] - point_data$y_point[j])^2)
+  }
+}
+#closest_point
+closest_point <- apply(distance_matrix, 1, which.min)  
+closest_distance <- apply(distance_matrix, 1, min) 
+cell_data$closest_point <- point_data$cluster[closest_point]
+cell_data$closest_distance <- closest_distance
+cell_data$closest_point <- as.numeric(cell_data$closest_point) %>% as.factor()
+cell_datalist[[z]] <- cell_data
+point_datalist[[z]] <- point_data
+}
+```
+
+
+
+
+```{r fig.width=12, fig.height=4}
+plist <- lapply(c("P1", "P2"), function(z){
+  cell_data <- cell_datalist[[z]]
+  point_data <- point_datalist[[z]]
+  ggplot(cell_data, aes(x = x_coord, y = y_coord, color = closest_point)) +
+  geom_point(size = 1) +  
+  geom_point(data = point_data, aes(x = x_point, y = y_point),
+             color = "red", size = 1) +  
+  geom_segment(aes(xend = point_data$x_point[closest_point], 
+                   yend = point_data$y_point[closest_point]), color = "grey") + 
+  scale_color_manual(values = brewer.pal(12, "Paired")) + 
+  labs(title = "Cells and Shortest Distance to Specific Points",
+       x = "X Coordinate",
+       y = "Y Coordinate")
+})
+cowplot::plot_grid(plotlist = plist, nrow = 1)
+```
+
+
+```{r fig.width=3, fig.height=3}
+for (i in c("P1", "P2")){
+  print(identical(rownames(cell_datalist[[i]]), colnames(scList[[i]])))
+  cell_datalist[[i]]$CXCL9sig <- scList[[i]]$CXCL9sig
+  cell_datalist[[i]]$IFNGsig <- scList[[i]]$IFNGsig
+}
+
+plist <- list()
+for (i in c("P1", "P2")){
+  cell_data <- as.data.frame(cell_datalist[[i]])
+  for (z in c("CXCL9sig", "IFNGsig")){
+    aa <- paste0(i, z)
+    sp1 <-  ggscatter(cell_data, x = "closest_distance", 
+                y = z,
+          alpha = 0.6, 
+          size = 0.5,
+          color = Mypal[1],
+   add = "reg.line", conf.int = TRUE) +
+  xlab("closest_distance") + ylab(z)+ stat_cor() + ggtitle(i)
+    plist[[aa]] <- sp1
+  }
+}
+```
+
+### Fig.S5C
+
+```{r fig.width=4, fig.height=6}
+plist$P1CXCL9sig
+```
+
+### Fig.S5D
+
+```{r fig.width=4, fig.height=6}
+plist$P1IFNGsig
+```
+
+
+### Fig.S5E
+
+```{r fig.width=4, fig.height=6}
+plist$P2CXCL9sig
+```
+
+
+### Fig.S5F
+
+```{r fig.width=4, fig.height=6}
+plist$P2IFNGsig
+```
+
+
+```{r}
+sessionInfo()
+```
+
+
+
+
