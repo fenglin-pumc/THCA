@@ -1,7 +1,7 @@
 ---
 title: "Figure7"
 author: "SRF"
-date: "2024-12-23"
+date: "2025-10-09"
 output: html_document
 ---
 
@@ -23,8 +23,6 @@ theme_set(theme_cowplot())
 options(stringsAsFactors = FALSE)
 ```
 
-
-
 ## setting
 
 ```{r}
@@ -34,22 +32,16 @@ source("./00_ColorSetting.R")
 
 ## Dataloading
 
-
 ```{r}
 IHCdat <- readRDS("./RData/07_IHCdat.rds")
 ```
 
-
-```{r}
-cxcl9_ihc <- IHCdat %>% dplyr::filter(!is.na(CXCL9_invasive))
-dim(cxcl9_ihc)
-```
-
-
+### Fig.7A:IHC
 
 ### Fig.7B
 
 ```{r fig.width=4, fig.height=4}
+cxcl9_ihc <- IHCdat %>% dplyr::filter(!is.na(CXCL9_invasive))
 cxcl9_ihc$size.log <- log2(cxcl9_ihc$Tumor.Size)
 ggscatter(cxcl9_ihc[cxcl9_ihc$AIT == "Yes", ], 
           x = "CXCL9_invasive", y = "size.log", 
@@ -60,7 +52,6 @@ ggscatter(cxcl9_ihc[cxcl9_ihc$AIT == "Yes", ],
   xlab("CXCL9 H-score in Tumor Invasion Margin") +
   ylab("Tumor Size")
 ```
-
 
 ### Fig.7C
 
@@ -107,6 +98,7 @@ cxcl9_ihc %>%
   scale_fill_manual(values = maciscol) + 
   NoLegend() 
 ```
+
 ### Fig.7E
 
 ```{r fig.width=3, fig.height=4}
@@ -125,7 +117,6 @@ cxcl9_ihc %>%
 ```
 
 ### Fig.7F
-
 
 ```{r }
 tcga_cxcl9 <- read.csv("./RData/07_TCGA_CXCL9.csv")
@@ -176,4 +167,3 @@ tcga_cxcl9 %>%
 ```{r}
 sessionInfo()
 ```
-
